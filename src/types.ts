@@ -24,6 +24,13 @@ export interface Note {
   at: string;
 }
 
+export interface Photo {
+  id: string;
+  at: string;
+  /** Set once the picture is stored in OneDrive. */
+  uploaded?: boolean;
+}
+
 export interface Stop {
   tripId: string;
   name: string;
@@ -40,6 +47,7 @@ export interface Stop {
   geo?: "gps" | "address" | "town";
   contacts: Contact[];
   notes: Note[];
+  photos?: Photo[];
   createdAt: string;
   updatedAt: string;
 }

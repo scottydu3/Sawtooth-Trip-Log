@@ -6,6 +6,7 @@ import { CalendarSync } from "./calendar";
 import type { Contact, Data, Reminder, Status, Stop, Trip } from "./types";
 import { StopMap, CATEGORY, CATEGORY_COLOR, CATEGORY_LABEL, type Category } from "./map";
 import { Geocoder, needsGeocode } from "./geocode";
+import { Photos } from "./photos";
 
 const STATES: [string, string][] = [["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
 const STATE_NAME: Record<string, string> = Object.fromEntries(STATES);
@@ -18,6 +19,8 @@ interface Route { view: View; id?: string; from?: View }
 const store = new Store();
 const cal = new CalendarSync(store);
 const geocoder = new Geocoder(store, (s) => store.get("trips", s.tripId)?.state || "");
+const photos = new Photos(store, () => { if (route.view === "stop") render(); if (viewer) openViewer(viewer.stopId, viewer.id); });
+let viewer: { stopId: string; id: string } | null = null;
 const stopMap = new StopMap(document.getElementById("mapWrap")!, (id) => go({ view: "stop", id, from: "map" }));
 let ready = false;
 let needsSignIn = false;
@@ -202,6 +205,11 @@ function viewStop(id: string): [string, string] {
     (c.phone ? '<div class="line">' + esc(c.phone) + ' <a class="btn sm" href="tel:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Call</a><a class="btn sm" href="sms:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Text</a></div>' : "") +
     (c.email ? '<div class="line">' + esc(c.email) + ' <a class="btn sm" href="mailto:' + esc(c.email) + '">Email</a><button class="btn sm" data-act="copy" data-v="' + esc(c.email) + '">Copy</button></div>' : "") +
     (c.notes ? '<div style="font-size:14px;color:var(--muted)">' + esc(c.notes) + "</div>" : "") + "</div>").join("") + "</div>" : '<div class="empty">No contacts yet. Add the buyer, owner or manager you spoke with.</div>';
+
+  const ps = s.photos || [];
+  html += '<div class="section-h"><h2>Photos</h2><label for="photoInput" class="addlink">+ Add photo</label></div><input id="photoInput" type="file" accept="image/*" multiple data-id="' + id + '" hidden>';
+  html += ps.length ? '<div class="photos">' + ps.map((p) => { const u = photos.url(p.id); return '<button class="thumb" data-act="viewPhoto" data-id="' + id + '" data-p="' + esc(p.id) + '" aria-label="View photo">' + (u ? '<img src="' + esc(u) + '" alt="">' : '<span class="hint">' + (navigator.onLine ? "Loading…" : "Offline") + "</span>") + "</button>"; }).join("") + "</div>"
+    : '<div class="empty">Snap a business card, a storefront or a price sheet so it stays with this stop.</div>';
 
   html += '<div class="section-h"><h2>Reminders</h2><button data-act="newRem" data-id="' + id + '">+ Add reminder</button></div>';
   const rs = remsOf(id);
@@ -410,6 +418,15 @@ function deviceId(): string {
   return id;
 }
 
+/* ---------- photo viewer ---------- */
+function openViewer(stopId: string, id: string) {
+  viewer = { stopId, id };
+  const u = photos.url(id);
+  const p = (store.get("stops", stopId)?.photos || []).find((x) => x.id === id);
+  $("#sheetRoot").innerHTML = '<div class="viewer" data-act="closeViewerBg"><div class="viewer-img">' + (u ? '<img src="' + esc(u) + '" alt="Photo">' : '<span class="hint">Loading…</span>') + '</div><div class="viewer-bar"><span class="hint">' + esc(p ? fmtWhen(p.at) : "") + (p && !p.uploaded && cal.enabled ? " · not uploaded yet" : "") + '</span><button class="btn danger sm" data-act="delPhoto" data-id="' + stopId + '" data-p="' + esc(id) + '">' + (armed === "photo:" + id ? "Tap again to delete" : "Delete") + '</button><button class="btn sm" data-act="closeViewer">Close</button></div></div>';
+}
+function closeViewer() { viewer = null; armed = null; closeSheet(); }
+
 /* ---------- export / import ---------- */
 function download(filename: string, text: string, type: string) {
   const a = document.createElement("a");
@@ -500,6 +517,7 @@ document.addEventListener("click", async (e) => {
       if (armed !== k) { armed = k; render(); break; }
       armed = null;
       remsOf(id).forEach(([rid]) => deleteReminder(rid));
+      (store.get("stops", id)?.photos || []).forEach((p) => void photos.remove(id, p.id));
       store.remove("stops", id);
       back();
       break;
@@ -511,6 +529,18 @@ document.addEventListener("click", async (e) => {
       stopsOf(id).forEach(([sid]) => { remsOf(sid).forEach(([rid]) => deleteReminder(rid)); store.remove("stops", sid); });
       store.remove("trips", id);
       back();
+      break;
+    }
+    case "viewPhoto": openViewer(id, el.dataset.p!); break;
+    case "closeViewer": closeViewer(); break;
+    case "closeViewerBg": if (e.target === el || (e.target as HTMLElement).classList.contains("viewer-img")) closeViewer(); break;
+    case "delPhoto": {
+      const k = "photo:" + el.dataset.p;
+      if (armed !== k) { armed = k; openViewer(id, el.dataset.p!); break; }
+      const pid = el.dataset.p!;
+      closeViewer();
+      void photos.remove(id, pid);
+      toast("Photo deleted");
       break;
     }
     case "closeSheet": closeSheet(); break;
@@ -525,8 +555,14 @@ document.addEventListener("input", (e) => {
 document.addEventListener("change", (e) => {
   const t = e.target as HTMLInputElement;
   if (t.id === "importFile" && t.files?.[0]) importBackup(t.files[0]);
+  if (t.id === "photoInput" && t.files?.length) {
+    const sid = t.dataset.id!;
+    const files = [...t.files];
+    toast(files.length > 1 ? "Adding " + files.length + " photos…" : "Adding photo…");
+    void (async () => { for (const f of files) await photos.add(sid, f); toast(cal.enabled ? "Photo saved" : "Photo saved on this device"); })().catch(() => toast("Couldn't read that picture."));
+  }
 });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#sheetRoot").innerHTML) closeSheet(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#sheetRoot").innerHTML) { if (viewer) closeViewer(); else closeSheet(); } });
 
 let renderQueued = false;
 store.onChange(() => {
@@ -553,14 +589,16 @@ async function boot() {
   if (account) {
     cal.enabled = true;
     cal.deviceId = deviceId();
+    photos.enabled = true;
     await store.connectRemote();
     // Renewal needed right at startup: pass through Microsoft's page now, before any typing starts.
     if (needsReconnect()) { try { if (!sessionStorage.getItem("tripLog.reconnectTried")) { sessionStorage.setItem("tripLog.reconnectTried", "1"); await reconnect(); return; } } catch { /* storage blocked */ } }
     geocoder.fillMissing();
+    void photos.uploadPending();
     await cal.pullAll();
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void cal.pullAll(); });
     // Back in signal with the app open: send reminders made offline and place new addresses.
-    window.addEventListener("online", () => { void cal.pullAll(); geocoder.fillMissing(); });
+    window.addEventListener("online", () => { void cal.pullAll(); geocoder.fillMissing(); void photos.uploadPending(); });
   }
 }
 void boot();
