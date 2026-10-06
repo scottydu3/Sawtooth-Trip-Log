@@ -73,7 +73,8 @@ main{padding-block:16px}
 .note time{display:block;font:500 12px/1.4 var(--mono);color:var(--muted)}
 .note p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .quicknote{display:flex;flex-direction:column;gap:8px}
-textarea,input,select{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px}
+/* 16px keeps iPhones from zooming in when a field is tapped; pinch-zoom still works. */
+textarea,input,select{font-size:16px;width:100%;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px}
 textarea{min-height:84px;resize:vertical}
 .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .filters input{flex:1 1 220px}
@@ -120,9 +121,8 @@ nav.tabs .badge{display:inline-block;min-width:18px;padding:1px 5px;margin-left:
 #mapPanel{position:absolute;left:10px;right:10px;top:10px;z-index:1000;display:flex;flex-direction:column;gap:6px;align-items:flex-start;pointer-events:none}
 #mapPanel>*{pointer-events:auto}
 .maplegend{display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100% - 50px);margin-left:44px}
-.maplegend button,.maplegend select{display:inline-flex;align-items:center;gap:6px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:13px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.18);width:auto}
-.maplegend button b{font:600 12px/1 var(--mono)}
-.maplegend button[aria-pressed="false"]{opacity:.45;text-decoration:line-through}
+.maplegend .chip{display:inline-flex;align-items:center;gap:6px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 11px;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.18);width:auto}
+.maplegend .chip b{font:600 12px/1 var(--mono)}
 .dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25);flex:none}
 .mapnote{margin-left:44px;background:var(--card);color:var(--muted);border-radius:8px;padding:5px 10px;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.18)}
 .leaflet-popup-content{margin:12px 14px;font:14px/1.4 var(--body)}

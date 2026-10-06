@@ -23,7 +23,7 @@ let ready = false;
 let needsSignIn = false;
 let route: Route = { view: "trips" };
 const backStack: Route[] = [];
-const ui = { remFilter: "open", q: "", qStatus: "", mapState: "", mapHide: new Set<Category>(), sort: "date" as "date" | "name" };
+const ui = { remFilter: "open", q: "", qStatus: "", sort: "date" as "date" | "name" };
 let armed: string | null = null;
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -260,7 +260,7 @@ function viewAllStops(): [string, string] {
 }
 
 function mapStops(): [string, Stop][] {
-  return store.all("stops").filter(([, s]) => !ui.mapState || store.get("trips", s.tripId)?.state === ui.mapState);
+  return store.all("stops"); // always every stop from every trip
 }
 function viewMap(): [string, string] {
   const n = store.all("stops").filter(([, s]) => s.lat != null).length;
@@ -269,8 +269,7 @@ function viewMap(): [string, string] {
 function renderMap() {
   geocoder.fillMissing();
   const inState = mapStops();
-  const shown = inState.filter(([, s]) => !ui.mapHide.has(CATEGORY[s.status]));
-  const states = [...new Set(store.all("stops").map(([, s]) => store.get("trips", s.tripId)?.state).filter(Boolean) as string[])].sort();
+  const shown = inState;
   const counts: Record<Category, number> = { customer: 0, potential: 0, lead: 0, nofit: 0 };
   inState.forEach(([, s]) => { if (s.lat != null) counts[CATEGORY[s.status]]++; });
   const missing = inState.filter(([, s]) => s.lat == null);
@@ -278,8 +277,7 @@ function renderMap() {
   const notFound = missing.filter(([id, s]) => needsGeocode(s) && geocoder.failed(id, s)).length;
   const locating = missing.length - noAddr - notFound;
   $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "potential", "lead", "nofit"] as Category[]).map((c) =>
-    '<button data-act="mapCat" data-v="' + c + '" aria-pressed="' + !ui.mapHide.has(c) + '"><span class="dot" style="background:' + CATEGORY_COLOR[c] + '"></span>' + CATEGORY_LABEL[c] + " <b>" + counts[c] + "</b></button>").join("") +
-    (states.length > 1 ? '<select id="mapState" aria-label="Show one state"><option value="">All states</option>' + states.map((st) => '<option value="' + st + '"' + (ui.mapState === st ? " selected" : "") + ">" + esc(STATE_NAME[st] || st) + "</option>").join("") + "</select>" : "") +
+    '<span class="chip"><span class="dot" style="background:' + CATEGORY_COLOR[c] + '"></span>' + CATEGORY_LABEL[c] + " <b>" + counts[c] + "</b></span>").join("") +
     "</div>" +
     (locating ? '<div class="mapnote">Finding ' + locating + " address" + (locating > 1 ? "es" : "") + " on the map…</div>" : "") +
     (notFound ? '<div class="mapnote">' + notFound + " address" + (notFound > 1 ? "es" : "") + " couldn't be found. Check the address on " + (notFound > 1 ? "those stops" : "that stop") + ', or use "Use my location" when you\'re there.</div>' : "") +
@@ -491,8 +489,7 @@ document.addEventListener("click", async (e) => {
     case "delRem": deleteReminder(id); closeSheet(); break;
     case "toggleRem": { const r = store.get("reminders", id)!; store.put("reminders", id, { ...r, done: !r.done }); break; }
     case "calRetry": { const r = store.get("reminders", id)!; saveReminder(id, { ...r, eventId: r.calStatus === "removed" ? undefined : r.eventId }); break; }
-    case "mapCat": { const c = el.dataset.v as Category; if (ui.mapHide.has(c)) ui.mapHide.delete(c); else ui.mapHide.add(c); render(); break; }
-    case "mapFit": stopMap.fitAll(mapStops().filter(([, s]) => !ui.mapHide.has(CATEGORY[s.status]))); break;
+    case "mapFit": stopMap.fitAll(mapStops()); break;
     case "sort": ui.sort = el.dataset.v === "name" ? "name" : "date"; pref("tripLog.sort", ui.sort); render(); break;
     case "remFilter": ui.remFilter = el.dataset.v!; render(); break;
     case "export": exportCsv(); break;
@@ -524,7 +521,6 @@ document.addEventListener("input", (e) => {
   const t = e.target as HTMLInputElement;
   if (t.id === "q") { ui.q = t.value; render(); }
   if (t.id === "qStatus") { ui.qStatus = t.value; render(); }
-  if (t.id === "mapState") { ui.mapState = t.value; render(); stopMap.fitAll(mapStops()); }
 });
 document.addEventListener("change", (e) => {
   const t = e.target as HTMLInputElement;
