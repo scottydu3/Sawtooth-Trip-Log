@@ -7,6 +7,7 @@ import type { Contact, Data, Reminder, Status, Stop, Trip } from "./types";
 import { StopMap, CATEGORY, CATEGORY_COLOR, CATEGORY_LABEL, type Category } from "./map";
 import { Geocoder, needsGeocode } from "./geocode";
 import { Photos } from "./photos";
+import { ContactSync, vcard } from "./contacts";
 
 const STATES: [string, string][] = [["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
 const STATE_NAME: Record<string, string> = Object.fromEntries(STATES);
@@ -21,6 +22,10 @@ const cal = new CalendarSync(store);
 const geocoder = new Geocoder(store, (s) => store.get("trips", s.tripId)?.state || "");
 const photos = new Photos(store, () => { if (route.view === "stop") render(); if (viewer) openViewer(viewer.stopId, viewer.id); });
 let viewer: { stopId: string; id: string } | null = null;
+const stateOfStop = (s: Stop) => store.get("trips", s.tripId)?.state || "";
+const contactsOn = () => pref("tripLog.contactsToOutlook") !== "off";
+const contactSync = new ContactSync(store, stateOfStop, contactsOn);
+const outlookPending = () => (contactSync.enabled && contactsOn() ? { outlookStatus: "pending" as const } : {});
 const stopMap = new StopMap(document.getElementById("mapWrap")!, (id) => go({ view: "stop", id, from: "map" }));
 let ready = false;
 let needsSignIn = false;
@@ -204,7 +209,9 @@ function viewStop(id: string): [string, string] {
   html += cs.length ? '<div class="list">' + cs.map((c) => '<div class="card contact"><div style="display:flex;justify-content:space-between;gap:8px"><div><div class="name">' + esc(c.name || "Unnamed") + "</div>" + (c.role ? '<div style="color:var(--muted);font-size:13px">' + esc(c.role) + "</div>" : "") + '</div><button class="btn sm" data-act="editContact" data-id="' + id + '" data-c="' + esc(c.id) + '">Edit</button></div>' +
     (c.phone ? '<div class="line">' + esc(c.phone) + ' <a class="btn sm" href="tel:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Call</a><a class="btn sm" href="sms:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Text</a></div>' : "") +
     (c.email ? '<div class="line">' + esc(c.email) + ' <a class="btn sm" href="mailto:' + esc(c.email) + '">Email</a><button class="btn sm" data-act="copy" data-v="' + esc(c.email) + '">Copy</button></div>' : "") +
-    (c.notes ? '<div style="font-size:14px;color:var(--muted)">' + esc(c.notes) + "</div>" : "") + "</div>").join("") + "</div>" : '<div class="empty">No contacts yet. Add the buyer, owner or manager you spoke with.</div>';
+    (c.notes ? '<div style="font-size:14px;color:var(--muted)">' + esc(c.notes) + "</div>" : "") +
+    '<div class="line" style="font-family:var(--body)">' + '<button class="btn sm" data-act="saveVcard" data-id="' + id + '" data-c="' + esc(c.id) + '">Save to phone</button>' +
+    (c.outlookStatus === "ok" ? '<span class="cal ok">In Outlook contacts ✓</span>' : c.outlookStatus === "error" ? '<button class="btn sm" data-act="contactRetry" data-id="' + id + '" data-c="' + esc(c.id) + '">Retry Outlook</button>' : c.outlookStatus === "pending" ? '<span class="cal pending">Adding to Outlook…</span>' : "") + "</div>" + "</div>").join("") + "</div>" : '<div class="empty">No contacts yet. Add the buyer, owner or manager you spoke with.</div>';
 
   const ps = s.photos || [];
   html += '<div class="section-h"><h2>Photos</h2><label for="photoInput" class="addlink">+ Add photo</label></div><input id="photoInput" type="file" accept="image/*" multiple data-id="' + id + '" hidden>';
@@ -304,6 +311,9 @@ function viewSettings(): [string, string] {
   html += '<div class="section-h"><h2>Sync</h2></div><div class="card"><p style="margin:0">' + syncBadge() + "</p>" +
     (store.sync === "error" ? '<p class="hint">' + esc(store.lastError) + "</p>" : "") +
     (acct ? '<p class="hint">Saved in your OneDrive at Apps › SawtoothTripLog › trip-log.json. Reminders are events on your Outlook calendar.</p><div class="actions"><button class="btn" data-act="syncNow">Sync now</button></div>' : "") + "</div>";
+  html += '<div class="section-h"><h2>Contacts to your phone</h2></div><div class="card"><label class="checkline" style="display:flex;gap:10px;align-items:center;margin:0"><input type="checkbox" id="contactsToOutlook"' + (contactsOn() ? " checked" : "") + "> Save new contacts to my Outlook contacts</label>" +
+    (contactSync.notPermitted ? '<p class="hint" style="color:var(--bad)">Microsoft hasn\'t allowed the app to save contacts yet. An admin needs to add the Contacts.ReadWrite permission to the app registration and grant consent.</p>' : "") +
+    '<p class="hint">To get them on your phone: in the Outlook app go to Settings, tap your account, and turn on <strong>Save contacts</strong>. Or on iPhone: Settings › Contacts › Accounts › your work account › turn on Contacts. Each contact also has a <strong>Save to phone</strong> button.</p></div>';
   html += '<div class="section-h"><h2>Export and backup</h2></div><div class="card"><p style="margin:0">Download every stop as a spreadsheet, or a full backup you can import later.</p><div class="actions"><button class="btn" data-act="export">Spreadsheet (CSV)</button><button class="btn" data-act="backup">Backup file</button><label class="btn" for="importFile">Import backup</label><input id="importFile" type="file" accept=".json,application/json" hidden></div></div>';
   html += '<div class="section-h"><h2>Install on your phone</h2></div><div class="card"><p style="margin:0"><strong>iPhone:</strong> open this page in Safari, tap Share, then Add to Home Screen.<br><strong>Android:</strong> open it in Chrome, tap the menu, then Install app.</p></div>';
   return [hdr, html];
@@ -368,6 +378,7 @@ function stopSheet(tripId: string | null, id?: string) {
       doc.contacts = contactsFromForm(v);
     }
     store.put("stops", nid, doc);
+    if (!id) doc.contacts.forEach((c) => void contactSync.push(nid, c.id));
     if (!id && v.remOn && v.remDue) {
       const due = new Date(v.remDue);
       if (!isNaN(+due)) {
@@ -377,6 +388,7 @@ function stopSheet(tripId: string | null, id?: string) {
     }
     if (newPhotos.length) void (async () => { for (const f of newPhotos) await photos.add(nid, f); })();
     if (needsGeocode(doc)) geocoder.enqueue(nid);
+    if (id && (s.name !== doc.name || s.address !== doc.address || s.city !== doc.city)) doc.contacts.forEach((c) => { if (c.outlookId) void contactSync.push(nid, c.id); });
     if (id && (s.name !== doc.name || s.address !== doc.address)) remsOf(nid).forEach(([rid, r]) => { if (!r.done && r.eventId) void cal.push(rid); });
     if (!id) go({ view: "stop", id: nid });
   });
@@ -400,7 +412,7 @@ function newStopExtras(): string {
 function contactsFromForm(v: Record<string, string>): Contact[] {
   const rows = Object.keys(v).filter((k) => k.startsWith("c_name_")).map((k) => k.slice(7));
   return rows.map((i) => ({ id: uid(), name: (v["c_name_" + i] || "").trim(), role: (v["c_role_" + i] || "").trim(), phone: (v["c_phone_" + i] || "").trim(), email: (v["c_email_" + i] || "").trim(), notes: "" }))
-    .filter((c) => c.name || c.phone || c.email);
+    .filter((c) => c.name || c.phone || c.email).map((c) => ({ ...c, ...outlookPending() }));
 }
 
 function useLocation() {
@@ -430,9 +442,10 @@ function contactSheet(stopId: string, cid?: string) {
   const c: Partial<Contact> = cid ? cs.find((x) => x.id === cid)! : {};
   const delBtn = cid ? '<button type="button" class="btn danger" data-act="delContact" data-id="' + stopId + '" data-c="' + esc(cid) + '" style="margin-right:auto">Delete</button>' : "";
   sheet(cid ? "Edit contact" : "New contact", fld("Name", "name", c.name, "text", "required " + CAP) + fld("Title / role", "role", c.role, "text", 'placeholder="e.g. Owner, purchasing manager"') + fld("Phone", "phone", c.phone, "tel") + fld("Email", "email", c.email, "email") + area("About this person", "notes", c.notes), (v) => {
-    const nc: Contact = { id: cid || uid(), name: v.name.trim(), role: v.role.trim(), phone: v.phone.trim(), email: v.email.trim(), notes: v.notes.trim() };
+    const nc: Contact = { ...c, id: cid || uid(), name: v.name.trim(), role: v.role.trim(), phone: v.phone.trim(), email: v.email.trim(), notes: v.notes.trim(), ...(cid && !c.outlookId ? {} : outlookPending()) };
     const next = cid ? cs.map((x) => (x.id === cid ? nc : x)) : [...cs, nc];
     store.put("stops", stopId, { ...s, contacts: next });
+    if (nc.outlookStatus === "pending") void contactSync.push(stopId, nc.id);
   }, delBtn);
 }
 
@@ -520,6 +533,13 @@ document.addEventListener("click", async (e) => {
     case "newStop": stopSheet(id); break;
     case "editStop": stopSheet(null, id); break;
     case "useLocation": useLocation(); break;
+    case "contactRetry": void contactSync.push(id, el.dataset.c!); break;
+    case "saveVcard": {
+      const s = store.get("stops", id)!;
+      const c = (s.contacts || []).find((x) => x.id === el.dataset.c);
+      if (c) download(((c.name || s.name).replace(/[^\w .-]+/g, "").trim() || "contact") + ".vcf", vcard(c, s, stateOfStop(s)), "text/vcard");
+      break;
+    }
     case "addContactRow": {
       const box = document.getElementById("contactRows")!;
       const n = box.querySelectorAll(".contactrow").length;
@@ -602,6 +622,7 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("change", (e) => {
   const t = e.target as HTMLInputElement;
+  if (t.id === "contactsToOutlook") { pref("tripLog.contactsToOutlook", t.checked ? "on" : "off"); if (t.checked) void contactSync.pushPending(); }
   if (t.id === "f_remOn") { document.getElementById("remFields")!.hidden = !t.checked; if (t.checked) document.getElementById("f_remTitle")?.focus(); }
   if (t.id === "importFile" && t.files?.[0]) importBackup(t.files[0]);
   if (t.id === "photoInput" && t.files?.length) {
@@ -643,15 +664,17 @@ async function boot() {
     cal.enabled = true;
     cal.deviceId = deviceId();
     photos.enabled = true;
+    contactSync.enabled = true;
     await store.connectRemote();
     // Renewal needed right at startup: pass through Microsoft's page now, before any typing starts.
     if (needsReconnect()) { try { if (!sessionStorage.getItem("tripLog.reconnectTried")) { sessionStorage.setItem("tripLog.reconnectTried", "1"); await reconnect(); return; } } catch { /* storage blocked */ } }
     geocoder.fillMissing();
     void photos.uploadPending();
+    void contactSync.pushPending();
     await cal.pullAll();
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void cal.pullAll(); });
     // Back in signal with the app open: send reminders made offline and place new addresses.
-    window.addEventListener("online", () => { void cal.pullAll(); geocoder.fillMissing(); void photos.uploadPending(); });
+    window.addEventListener("online", () => { void cal.pullAll(); geocoder.fillMissing(); void photos.uploadPending(); void contactSync.pushPending(); });
   }
 }
 void boot();

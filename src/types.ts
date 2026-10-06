@@ -16,6 +16,9 @@ export interface Contact {
   phone: string;
   email: string;
   notes: string;
+  /** The matching entry in the user's Outlook contacts, once saved there. */
+  outlookId?: string;
+  outlookStatus?: "pending" | "ok" | "error";
 }
 
 export interface Note {

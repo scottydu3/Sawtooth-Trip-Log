@@ -16,9 +16,9 @@ export interface GraphResponse<T> {
 
 export async function graph<T = unknown>(
   path: string,
-  init: { method?: string; body?: unknown; headers?: Record<string, string>; raw?: boolean } = {},
+  init: { method?: string; body?: unknown; headers?: Record<string, string>; raw?: boolean; scopes?: string[] } = {},
 ): Promise<GraphResponse<T>> {
-  const token = await getToken();
+  const token = await getToken(init.scopes);
   const headers: Record<string, string> = {
     Authorization: "Bearer " + token,
     Prefer: 'outlook.timezone="UTC"',

@@ -1,6 +1,8 @@
 import { PublicClientApplication, InteractionRequiredAuthError, type AccountInfo } from "@azure/msal-browser";
 
 export const SCOPES = ["User.Read", "Calendars.ReadWrite", "Files.ReadWrite"];
+/** Asked for separately, so the app keeps working before an admin has approved it. */
+export const CONTACT_SCOPES = ["Contacts.ReadWrite"];
 
 const clientId = import.meta.env.VITE_MS_CLIENT_ID as string | undefined;
 // "common" accepts both work/school and personal Microsoft accounts.
@@ -87,10 +89,10 @@ export async function signOut(): Promise<void> {
   await pca.logoutRedirect({ account: account ?? undefined, postLogoutRedirectUri: redirectUri() });
 }
 
-export async function getToken(): Promise<string> {
+export async function getToken(scopes: string[] = SCOPES): Promise<string> {
   if (!pca || !account) throw new Error("Not signed in");
   try {
-    const r = await pca.acquireTokenSilent({ scopes: SCOPES, account });
+    const r = await pca.acquireTokenSilent({ scopes, account });
     return r.accessToken;
   } catch (e) {
     // Don't jump to Microsoft's page mid-task; the app offers a Reconnect button instead.

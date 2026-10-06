@@ -5,6 +5,7 @@ A phone-friendly app for sales trips. Log trips by state, each business you visi
 - **Trips** grouped by state, each with its stops
 - **Stops**: address (or "use my location"), status, contacts, notes, photos (business cards, storefronts), Open in Maps
 - **Map**: every stop as a dot, green for customers, yellow for quoted, blue for new leads and follow ups, red for not a fit. Filter by color or state; tap a dot to open the stop. Addresses are placed on the map automatically using OpenStreetMap
+- **Contacts to your phone**: people added on a stop are saved to your Outlook contacts (turn on *Save contacts* in the Outlook app to get them on the phone), and each has a *Save to phone* vCard button
 - **Reminders**: written to Outlook as calendar events with a 15-minute alert; moves, renames and deletes made in Outlook come back into the app
 - **Storage**: `Apps/SawtoothTripLog/trip-log.json` (and photos in `Apps/SawtoothTripLog/photos/`) in your OneDrive, cached on the device so it works with no signal and syncs when you're back online
 - **Export**: CSV spreadsheet, full backup file, and import
@@ -23,8 +24,8 @@ Done once by a Microsoft 365 admin for the company. It takes about five minutes.
    - **Supported account types:** *Accounts in this organizational directory only (single tenant)*
    - **Redirect URI:** choose **Single-page application (SPA)** and enter the app's address, for example `https://scottydu3.github.io/Sawtooth-Trip-Log/` (with the trailing slash)
 4. Click **Register**. On the page that opens, copy the **Application (client) ID** and the **Directory (tenant) ID**.
-5. Open **API permissions → Add a permission → Microsoft Graph → Delegated permissions**, tick **Calendars.ReadWrite** and **Files.ReadWrite**, and click **Add permissions**. (`User.Read` is already there.)
-6. Click **Grant admin consent for (your company)** and confirm. All three permissions should show a green check.
+5. Open **API permissions → Add a permission → Microsoft Graph → Delegated permissions**, tick **Calendars.ReadWrite**, **Files.ReadWrite** and **Contacts.ReadWrite**, and click **Add permissions**. (`User.Read` is already there.)
+6. Click **Grant admin consent for (your company)** and confirm. All four permissions should show a green check.
 7. Put the two IDs in `.env.production`:
    ```
    VITE_MS_CLIENT_ID=<Application (client) ID>
@@ -32,7 +33,7 @@ Done once by a Microsoft 365 admin for the company. It takes about five minutes.
    ```
    These IDs are not secrets; every browser app ships them.
 
-What the permissions allow, only for the person signed in: read their basic profile, add and change events on their own calendar, and read and write files in their own OneDrive (the app only touches its one file).
+What the permissions allow, only for the person signed in: read their basic profile, add and change events on their own calendar, add people to their own Outlook contacts, and read and write files in their own OneDrive (the app only touches its one file).
 
 ## Publishing
 
