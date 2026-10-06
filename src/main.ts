@@ -310,11 +310,17 @@ function viewSettings(): [string, string] {
 }
 
 /* ---------- sheets ---------- */
+/** Fields that capitalize each word: phone keyboards do it as you type, and the rest is tidied when you leave the field. */
+const CAP = 'autocapitalize="words" data-cap';
+/** "624 sugar bowl rd" -> "624 Sugar Bowl Rd". Only raises first letters, so "B&G" and "McKay" stay as typed. */
+const capWords = (v: string) => v.replace(/(^|[\s\-\/(&])([a-z])/g, (_m, pre: string, ch: string) => pre + ch.toUpperCase());
+
 function sheet(title: string, fields: string, onSubmit: (v: Record<string, string>) => boolean | void, extra = "") {
   $("#sheetRoot").innerHTML = '<div class="sheet-bg" data-act="closeSheetBg"><div class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><h3>' + esc(title) + '</h3><form id="sheetForm">' + fields + '<div class="foot">' + extra + '<button type="button" class="btn" data-act="closeSheet">Cancel</button><button type="submit" class="btn primary">Save</button></div></form></div></div>';
   const f = $<HTMLFormElement>("#sheetForm");
   f.addEventListener("submit", (e) => {
     e.preventDefault();
+    f.querySelectorAll<HTMLInputElement>("[data-cap]").forEach((el) => (el.value = capWords(el.value)));
     const v = Object.fromEntries([...new FormData(f).entries()].map(([k, x]) => [k, String(x)]));
     if (onSubmit(v) !== false) closeSheet();
   });
@@ -342,7 +348,7 @@ function stopSheet(tripId: string | null, id?: string) {
   pendingGeo = null;
   const tripOpts = store.all("trips").map(([k, t]) => [k, t.state + " · " + tripLabel(t)] as [string, string]);
   const geo = "geolocation" in navigator ? '<div class="geo"><button type="button" class="btn sm" data-act="useLocation">Use my location</button><span class="hint" id="geoMsg" style="margin:0"></span></div>' : "";
-  sheet(id ? "Edit stop" : "New stop", fld("Business name", "name", s.name, "text", "required") + fld("Type of business", "kind", s.kind, "text", 'placeholder="e.g. Hardware store, contractor"') + geo + fld("Address", "address", s.address) + '<div class="two">' + fld("Town", "city", s.city) + fld("Visited", "visitedOn", s.visitedOn, "date") + "</div>" + '<div class="two">' + sel("Status", "status", STATUSES, s.status) + fld("Website", "website", s.website) + "</div>" +
+  sheet(id ? "Edit stop" : "New stop", fld("Business name", "name", s.name, "text", "required " + CAP) + fld("Type of business", "kind", s.kind, "text", 'placeholder="e.g. Hardware store, contractor"') + geo + fld("Address", "address", s.address, "text", CAP) + '<div class="two">' + fld("Town", "city", s.city, "text", CAP) + fld("Visited", "visitedOn", s.visitedOn, "date") + "</div>" + '<div class="two">' + sel("Status", "status", STATUSES, s.status) + fld("Website", "website", s.website) + "</div>" +
     // Phone numbers belong to contacts; an older stop's main number stays editable here.
     (s.phone ? fld("Main phone", "phone", s.phone, "tel") : "") + (id ? sel("Trip", "tripId", tripOpts, s.tripId) : "") + (id ? "" : newStopExtras()), (v) => {
     if (!v.name.trim()) return false;
@@ -378,7 +384,7 @@ function stopSheet(tripId: string | null, id?: string) {
 
 /* The rest of the New stop form, so a visit can be logged in one go. */
 const contactRow = (i: number) => '<div class="contactrow" data-row="' + i + '">' +
-  '<div class="two">' + fld("Contact name", "c_name_" + i, "") + fld("Title / role", "c_role_" + i, "", "text", 'placeholder="e.g. Owner"') + "</div>" +
+  '<div class="two">' + fld("Contact name", "c_name_" + i, "", "text", CAP) + fld("Title / role", "c_role_" + i, "", "text", 'placeholder="e.g. Owner"') + "</div>" +
   '<div class="two">' + fld("Phone", "c_phone_" + i, "", "tel") + fld("Email", "c_email_" + i, "", "email") + "</div></div>";
 
 function newStopExtras(): string {
@@ -423,7 +429,7 @@ function contactSheet(stopId: string, cid?: string) {
   const cs = (s.contacts || []).slice();
   const c: Partial<Contact> = cid ? cs.find((x) => x.id === cid)! : {};
   const delBtn = cid ? '<button type="button" class="btn danger" data-act="delContact" data-id="' + stopId + '" data-c="' + esc(cid) + '" style="margin-right:auto">Delete</button>' : "";
-  sheet(cid ? "Edit contact" : "New contact", fld("Name", "name", c.name, "text", "required") + fld("Title / role", "role", c.role, "text", 'placeholder="e.g. Owner, purchasing manager"') + fld("Phone", "phone", c.phone, "tel") + fld("Email", "email", c.email, "email") + area("About this person", "notes", c.notes), (v) => {
+  sheet(cid ? "Edit contact" : "New contact", fld("Name", "name", c.name, "text", "required " + CAP) + fld("Title / role", "role", c.role, "text", 'placeholder="e.g. Owner, purchasing manager"') + fld("Phone", "phone", c.phone, "tel") + fld("Email", "email", c.email, "email") + area("About this person", "notes", c.notes), (v) => {
     const nc: Contact = { id: cid || uid(), name: v.name.trim(), role: v.role.trim(), phone: v.phone.trim(), email: v.email.trim(), notes: v.notes.trim() };
     const next = cid ? cs.map((x) => (x.id === cid ? nc : x)) : [...cs, nc];
     store.put("stops", stopId, { ...s, contacts: next });
@@ -604,6 +610,10 @@ document.addEventListener("change", (e) => {
     toast(files.length > 1 ? "Adding " + files.length + " photos…" : "Adding photo…");
     void (async () => { for (const f of files) await photos.add(sid, f); toast(cal.enabled ? "Photo saved" : "Photo saved on this device"); })().catch(() => toast("Couldn't read that picture."));
   }
+});
+document.addEventListener("focusout", (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.matches?.("[data-cap]")) t.value = capWords(t.value);
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#sheetRoot").innerHTML) { if (viewer) closeViewer(); else closeSheet(); } });
 
