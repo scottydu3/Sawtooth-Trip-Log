@@ -342,7 +342,7 @@ function stopSheet(tripId: string | null, id?: string) {
   pendingGeo = null;
   const tripOpts = store.all("trips").map(([k, t]) => [k, t.state + " · " + tripLabel(t)] as [string, string]);
   const geo = "geolocation" in navigator ? '<div class="geo"><button type="button" class="btn sm" data-act="useLocation">Use my location</button><span class="hint" id="geoMsg" style="margin:0"></span></div>' : "";
-  sheet(id ? "Edit stop" : "New stop", fld("Business name", "name", s.name, "text", "required") + fld("Type of business", "kind", s.kind, "text", 'placeholder="e.g. Hardware store, contractor"') + geo + fld("Address", "address", s.address) + '<div class="two">' + fld("Town", "city", s.city) + fld("Visited", "visitedOn", s.visitedOn, "date") + "</div>" + '<div class="two">' + fld("Main phone", "phone", s.phone, "tel") + sel("Status", "status", STATUSES, s.status) + "</div>" + fld("Website", "website", s.website) + (id ? sel("Trip", "tripId", tripOpts, s.tripId) : "") + (id ? "" : area("First note (optional)", "note", "")), (v) => {
+  sheet(id ? "Edit stop" : "New stop", fld("Business name", "name", s.name, "text", "required") + fld("Type of business", "kind", s.kind, "text", 'placeholder="e.g. Hardware store, contractor"') + geo + fld("Address", "address", s.address) + '<div class="two">' + fld("Town", "city", s.city) + fld("Visited", "visitedOn", s.visitedOn, "date") + "</div>" + '<div class="two">' + fld("Main phone", "phone", s.phone, "tel") + sel("Status", "status", STATUSES, s.status) + "</div>" + fld("Website", "website", s.website) + (id ? sel("Trip", "tripId", tripOpts, s.tripId) : "") + (id ? "" : newStopExtras()), (v) => {
     if (!v.name.trim()) return false;
     const nid = id || uid();
     const doc: Stop = {
@@ -354,12 +354,45 @@ function stopSheet(tripId: string | null, id?: string) {
     if (!pendingGeo && id && s.geo !== "gps" && (s.address !== doc.address || s.city !== doc.city)) {
       delete doc.lat; delete doc.lng; delete doc.geo; // address changed: find it again
     }
-    if (!id && v.note && v.note.trim()) doc.notes = [{ id: uid(), text: v.note.trim(), at: nowIso() }];
+    const newPhotos = id ? [] : [...(document.getElementById("f_photos") as HTMLInputElement | null)?.files || []];
+    if (!id) {
+      if (v.note && v.note.trim()) doc.notes = [{ id: uid(), text: v.note.trim(), at: nowIso() }];
+      doc.contacts = contactsFromForm(v);
+    }
     store.put("stops", nid, doc);
+    if (!id && v.remOn && v.remDue) {
+      const due = new Date(v.remDue);
+      if (!isNaN(+due)) {
+        const who = doc.contacts[0]?.name || doc.name;
+        saveReminder(uid(), { stopId: nid, tripId: doc.tripId, title: v.remTitle.trim() || "Follow up with " + who, dueAt: due.toISOString(), durationMin: +v.remLen || 30, details: v.remDetails.trim(), done: false, createdAt: nowIso(), updatedAt: nowIso(), createdBy: deviceId() });
+      }
+    }
+    if (newPhotos.length) void (async () => { for (const f of newPhotos) await photos.add(nid, f); })();
     if (needsGeocode(doc)) geocoder.enqueue(nid);
     if (id && (s.name !== doc.name || s.address !== doc.address)) remsOf(nid).forEach(([rid, r]) => { if (!r.done && r.eventId) void cal.push(rid); });
     if (!id) go({ view: "stop", id: nid });
   });
+}
+
+/* The rest of the New stop form, so a visit can be logged in one go. */
+const contactRow = (i: number) => '<div class="contactrow" data-row="' + i + '">' +
+  '<div class="two">' + fld("Contact name", "c_name_" + i, "") + fld("Title / role", "c_role_" + i, "", "text", 'placeholder="e.g. Owner"') + "</div>" +
+  '<div class="two">' + fld("Phone", "c_phone_" + i, "", "tel") + fld("Email", "c_email_" + i, "", "email") + "</div></div>";
+
+function newStopExtras(): string {
+  const d = new Date(); d.setDate(d.getDate() + 3); d.setHours(9, 0, 0, 0);
+  return '<div class="formsec">Contact</div><div id="contactRows">' + contactRow(0) + '</div><button type="button" class="btn sm" data-act="addContactRow" style="align-self:flex-start">+ Another contact</button>' +
+    '<div class="formsec">Note</div>' + area("What did you learn?", "note", "") +
+    '<div class="formsec">Reminder</div><label class="checkline"><input type="checkbox" id="f_remOn" name="remOn" value="1"> Add a follow-up reminder' + (cal.enabled ? " to Outlook" : "") + "</label>" +
+    '<div id="remFields" hidden>' + fld("What", "remTitle", "", "text", 'placeholder="Follow up with…"') + '<div class="two">' + fld("When", "remDue", toLocalInput(d), "datetime-local") +
+    sel("Length", "remLen", [["15", "15 min"], ["30", "30 min"], ["60", "1 hour"], ["120", "2 hours"]], "30") + "</div>" + area("Details", "remDetails", "") + "</div>" +
+    '<div class="formsec">Photos</div><label>Business card, storefront, price sheet<input id="f_photos" type="file" accept="image/*" multiple></label>';
+}
+
+function contactsFromForm(v: Record<string, string>): Contact[] {
+  const rows = Object.keys(v).filter((k) => k.startsWith("c_name_")).map((k) => k.slice(7));
+  return rows.map((i) => ({ id: uid(), name: (v["c_name_" + i] || "").trim(), role: (v["c_role_" + i] || "").trim(), phone: (v["c_phone_" + i] || "").trim(), email: (v["c_email_" + i] || "").trim(), notes: "" }))
+    .filter((c) => c.name || c.phone || c.email);
 }
 
 function useLocation() {
@@ -479,6 +512,13 @@ document.addEventListener("click", async (e) => {
     case "newStop": stopSheet(id); break;
     case "editStop": stopSheet(null, id); break;
     case "useLocation": useLocation(); break;
+    case "addContactRow": {
+      const box = document.getElementById("contactRows")!;
+      const n = box.querySelectorAll(".contactrow").length;
+      box.insertAdjacentHTML("beforeend", contactRow(n));
+      (document.getElementById("f_c_name_" + n) as HTMLInputElement).focus();
+      break;
+    }
     case "setStatus": { const s = store.get("stops", id)!; store.put("stops", id, { ...s, status: el.dataset.v as Status }); toast("Marked " + STATUS_NAME[el.dataset.v!].toLowerCase()); break; }
     case "newContact": contactSheet(id); break;
     case "editContact": contactSheet(id, el.dataset.c); break;
@@ -554,6 +594,7 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("change", (e) => {
   const t = e.target as HTMLInputElement;
+  if (t.id === "f_remOn") { document.getElementById("remFields")!.hidden = !t.checked; if (t.checked) document.getElementById("f_remTitle")?.focus(); }
   if (t.id === "importFile" && t.files?.[0]) importBackup(t.files[0]);
   if (t.id === "photoInput" && t.files?.length) {
     const sid = t.dataset.id!;

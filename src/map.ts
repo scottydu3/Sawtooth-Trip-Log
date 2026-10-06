@@ -7,14 +7,14 @@ export type Category = "customer" | "potential" | "lead" | "nofit";
 export const CATEGORY: Record<Status, Category> = {
   customer: "customer",
   new: "lead",
-  follow: "potential",
+  follow: "lead",
   quoted: "potential",
   nofit: "nofit",
 };
 export const CATEGORY_LABEL: Record<Category, string> = {
   customer: "Customer",
-  potential: "Quoted / follow up",
-  lead: "New lead",
+  potential: "Quoted",
+  lead: "New lead / follow up",
   nofit: "Not a fit",
 };
 export const CATEGORY_COLOR: Record<Category, string> = {

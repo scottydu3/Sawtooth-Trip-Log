@@ -4,7 +4,7 @@ A phone-friendly app for sales trips. Log trips by state, each business you visi
 
 - **Trips** grouped by state, each with its stops
 - **Stops**: address (or "use my location"), status, contacts, notes, photos (business cards, storefronts), Open in Maps
-- **Map**: every stop as a dot, green for customers, yellow for quoted or follow up, blue for new leads, red for not a fit. Filter by color or state; tap a dot to open the stop. Addresses are placed on the map automatically using OpenStreetMap
+- **Map**: every stop as a dot, green for customers, yellow for quoted, blue for new leads and follow ups, red for not a fit. Filter by color or state; tap a dot to open the stop. Addresses are placed on the map automatically using OpenStreetMap
 - **Reminders**: written to Outlook as calendar events with a 15-minute alert; moves, renames and deletes made in Outlook come back into the app
 - **Storage**: `Apps/SawtoothTripLog/trip-log.json` (and photos in `Apps/SawtoothTripLog/photos/`) in your OneDrive, cached on the device so it works with no signal and syncs when you're back online
 - **Export**: CSV spreadsheet, full backup file, and import
