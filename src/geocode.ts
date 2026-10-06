@@ -9,6 +9,7 @@ export class Geocoder {
   private queue: string[] = [];
   private running = false;
   private tried = new Set<string>();
+  private notFound = new Set<string>();
   constructor(private store: Store, private stateOf: (s: Stop) => string) {}
 
   /** Queue every stop that could be placed on the map but isn't yet. */
@@ -22,6 +23,9 @@ export class Geocoder {
   }
 
   get pending() { return this.queue.length; }
+
+  /** True when the stop's current address was looked up and not found. */
+  failed(id: string, s: Stop): boolean { return this.notFound.has(id + query(s, this.stateOf(s))); }
 
   private async run() {
     if (this.running) return;
@@ -37,6 +41,7 @@ export class Geocoder {
         const hit = await lookup(q);
         const cur = this.store.get("stops", id);
         // Only apply if nothing changed while we were looking it up.
+        if (!hit) this.notFound.add(id + q);
         if (hit && cur && query(cur, this.stateOf(cur)) === q && cur.lat == null) {
           this.store.put("stops", id, { ...cur, lat: hit.lat, lng: hit.lng, geo: cur.address ? "address" : "town" });
         }

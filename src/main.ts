@@ -1,6 +1,6 @@
 import "./styles.css";
 import { registerSW } from "virtual:pwa-register";
-import { authConfigured, currentAccount, initAuth, signIn, signOut } from "./auth";
+import { authConfigured, currentAccount, initAuth, reconnect, ReconnectNeeded, signIn, signOut } from "./auth";
 import { Store } from "./store";
 import { CalendarSync } from "./calendar";
 import type { Contact, Data, Reminder, Status, Stop, Trip } from "./types";
@@ -74,6 +74,8 @@ function back() { route = backStack.pop() || { view: "trips" }; armed = null; re
 function tab(v: View) { backStack.length = 0; go({ view: v }, false); }
 
 /* ---------- render ---------- */
+const needsReconnect = () => store.sync === "error" && store.lastErrorValue instanceof ReconnectNeeded;
+
 function syncBadge(): string {
   if (!authConfigured) return "On this device only";
   const label = { local: "Not synced", syncing: "Syncing…", synced: "Synced to OneDrive", offline: "Offline, will sync", error: "Sync problem" }[store.sync];
@@ -100,7 +102,7 @@ function render() {
   const selPos = focusId ? active!.selectionStart : null;
   const draft = document.getElementById("noteText") as HTMLTextAreaElement | null;
   const draftVal = draft ? draft.value : "";
-  $("#app").innerHTML = parts[1];
+  $("#app").innerHTML = (needsReconnect() && v !== "map" ? '<div class="banner">Microsoft wants you to confirm your sign-in before the app can sync again. Your changes are safe on this phone. <div class="actions" style="margin-top:8px"><button class="btn primary sm" data-act="reconnect">Reconnect</button></div></div>' : "") + parts[1];
   const newDraft = document.getElementById("noteText") as HTMLTextAreaElement | null;
   if (draftVal && newDraft) newDraft.value = draftVal;
   if (focusId) {
@@ -266,12 +268,14 @@ function renderMap() {
   inState.forEach(([, s]) => { if (s.lat != null) counts[CATEGORY[s.status]]++; });
   const missing = inState.filter(([, s]) => s.lat == null);
   const noAddr = missing.filter(([, s]) => !needsGeocode(s)).length;
-  const locating = missing.length - noAddr;
+  const notFound = missing.filter(([id, s]) => needsGeocode(s) && geocoder.failed(id, s)).length;
+  const locating = missing.length - noAddr - notFound;
   $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "potential", "lead", "nofit"] as Category[]).map((c) =>
     '<button data-act="mapCat" data-v="' + c + '" aria-pressed="' + !ui.mapHide.has(c) + '"><span class="dot" style="background:' + CATEGORY_COLOR[c] + '"></span>' + CATEGORY_LABEL[c] + " <b>" + counts[c] + "</b></button>").join("") +
     (states.length > 1 ? '<select id="mapState" aria-label="Show one state"><option value="">All states</option>' + states.map((st) => '<option value="' + st + '"' + (ui.mapState === st ? " selected" : "") + ">" + esc(STATE_NAME[st] || st) + "</option>").join("") + "</select>" : "") +
     "</div>" +
     (locating ? '<div class="mapnote">Finding ' + locating + " address" + (locating > 1 ? "es" : "") + " on the map…</div>" : "") +
+    (notFound ? '<div class="mapnote">' + notFound + " address" + (notFound > 1 ? "es" : "") + " couldn't be found. Check the address on " + (notFound > 1 ? "those stops" : "that stop") + ', or use "Use my location" when you\'re there.</div>' : "") +
     (noAddr ? '<div class="mapnote">' + noAddr + " stop" + (noAddr > 1 ? "s have" : " has") + " no address, so " + (noAddr > 1 ? "they're" : "it's") + " not on the map.</div>" : "") +
     (!store.all("stops").length ? '<div class="mapnote">Your stops will show up here as colored dots once you add them.</div>' : "");
   stopMap.show(shown, (s) => [s.city, store.get("trips", s.tripId)?.state].filter(Boolean).join(", "));
@@ -444,6 +448,7 @@ document.addEventListener("click", async (e) => {
     case "back": back(); break;
     case "signIn": try { await signIn(); } catch (err) { toast(err instanceof Error ? err.message : "Sign-in failed"); } break;
     case "signOut": await signOut(); break;
+    case "reconnect": await reconnect(); break;
     case "syncNow": void store.pull().then(() => cal.pullAll()); break;
     case "newTrip": tripSheet(); break;
     case "editTrip": tripSheet(id); break;
@@ -544,6 +549,8 @@ async function boot() {
     cal.enabled = true;
     cal.deviceId = deviceId();
     await store.connectRemote();
+    // Renewal needed right at startup: pass through Microsoft's page now, before any typing starts.
+    if (needsReconnect()) { try { if (!sessionStorage.getItem("tripLog.reconnectTried")) { sessionStorage.setItem("tripLog.reconnectTried", "1"); await reconnect(); return; } } catch { /* storage blocked */ } }
     geocoder.fillMissing();
     await cal.pullAll();
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void cal.pullAll(); });

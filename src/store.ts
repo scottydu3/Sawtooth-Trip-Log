@@ -27,6 +27,7 @@ export class Store {
   data: Data = readLocal<Data>(LOCAL_KEY, emptyData());
   sync: SyncState = "local";
   lastError = "";
+  lastErrorValue: unknown = null;
   private etag: string | null = readLocal<string | null>(ETAG_KEY, null);
   private dirty = readLocal<boolean>(DIRTY_KEY, false);
   private timer: number | undefined;
@@ -150,6 +151,7 @@ export class Store {
   private setDirty(v: boolean) { this.dirty = v; writeLocal(DIRTY_KEY, v); }
   private setSync(s: SyncState) { if (this.sync !== s) { this.sync = s; this.emit(); } }
   private fail(e: unknown) {
+    this.lastErrorValue = e;
     this.lastError = e instanceof Error ? e.message : String(e);
     this.setSync(navigator.onLine ? "error" : "offline");
   }
