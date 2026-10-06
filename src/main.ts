@@ -342,13 +342,15 @@ function stopSheet(tripId: string | null, id?: string) {
   pendingGeo = null;
   const tripOpts = store.all("trips").map(([k, t]) => [k, t.state + " · " + tripLabel(t)] as [string, string]);
   const geo = "geolocation" in navigator ? '<div class="geo"><button type="button" class="btn sm" data-act="useLocation">Use my location</button><span class="hint" id="geoMsg" style="margin:0"></span></div>' : "";
-  sheet(id ? "Edit stop" : "New stop", fld("Business name", "name", s.name, "text", "required") + fld("Type of business", "kind", s.kind, "text", 'placeholder="e.g. Hardware store, contractor"') + geo + fld("Address", "address", s.address) + '<div class="two">' + fld("Town", "city", s.city) + fld("Visited", "visitedOn", s.visitedOn, "date") + "</div>" + '<div class="two">' + fld("Main phone", "phone", s.phone, "tel") + sel("Status", "status", STATUSES, s.status) + "</div>" + fld("Website", "website", s.website) + (id ? sel("Trip", "tripId", tripOpts, s.tripId) : "") + (id ? "" : newStopExtras()), (v) => {
+  sheet(id ? "Edit stop" : "New stop", fld("Business name", "name", s.name, "text", "required") + fld("Type of business", "kind", s.kind, "text", 'placeholder="e.g. Hardware store, contractor"') + geo + fld("Address", "address", s.address) + '<div class="two">' + fld("Town", "city", s.city) + fld("Visited", "visitedOn", s.visitedOn, "date") + "</div>" + '<div class="two">' + sel("Status", "status", STATUSES, s.status) + fld("Website", "website", s.website) + "</div>" +
+    // Phone numbers belong to contacts; an older stop's main number stays editable here.
+    (s.phone ? fld("Main phone", "phone", s.phone, "tel") : "") + (id ? sel("Trip", "tripId", tripOpts, s.tripId) : "") + (id ? "" : newStopExtras()), (v) => {
     if (!v.name.trim()) return false;
     const nid = id || uid();
     const doc: Stop = {
       ...(s as Stop), contacts: s.contacts || [], notes: s.notes || [], createdAt: s.createdAt || nowIso(),
       tripId: v.tripId || s.tripId!, name: v.name.trim(), kind: v.kind.trim(), address: v.address.trim(), city: v.city.trim(),
-      visitedOn: v.visitedOn, phone: v.phone.trim(), status: v.status as Status, website: v.website.trim(),
+      visitedOn: v.visitedOn, phone: (v.phone ?? "").trim(), status: v.status as Status, website: v.website.trim(),
       ...(pendingGeo ? { ...pendingGeo, geo: "gps" as const } : {}),
     };
     if (!pendingGeo && id && s.geo !== "gps" && (s.address !== doc.address || s.city !== doc.city)) {
