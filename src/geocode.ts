@@ -1,0 +1,69 @@
+import type { Stop } from "./types";
+import type { Store } from "./store";
+
+/**
+ * Finds map coordinates for stops that have an address but no location yet, using
+ * OpenStreetMap's free geocoder (one request per second, per its usage policy).
+ */
+export class Geocoder {
+  private queue: string[] = [];
+  private running = false;
+  private tried = new Set<string>();
+  constructor(private store: Store, private stateOf: (s: Stop) => string) {}
+
+  /** Queue every stop that could be placed on the map but isn't yet. */
+  fillMissing() {
+    for (const [id, s] of this.store.all("stops")) if (needsGeocode(s) && !this.tried.has(id + query(s, this.stateOf(s)))) this.enqueue(id);
+  }
+
+  enqueue(id: string) {
+    if (!this.queue.includes(id)) this.queue.push(id);
+    void this.run();
+  }
+
+  get pending() { return this.queue.length; }
+
+  private async run() {
+    if (this.running) return;
+    this.running = true;
+    try {
+      while (this.queue.length) {
+        if (!navigator.onLine) break;
+        const id = this.queue.shift()!;
+        const s = this.store.get("stops", id);
+        if (!s || !needsGeocode(s)) continue;
+        const q = query(s, this.stateOf(s));
+        this.tried.add(id + q);
+        const hit = await lookup(q);
+        const cur = this.store.get("stops", id);
+        // Only apply if nothing changed while we were looking it up.
+        if (hit && cur && query(cur, this.stateOf(cur)) === q && cur.lat == null) {
+          this.store.put("stops", id, { ...cur, lat: hit.lat, lng: hit.lng, geo: cur.address ? "address" : "town" });
+        }
+        await new Promise((r) => setTimeout(r, 1100));
+      }
+    } finally {
+      this.running = false;
+    }
+  }
+}
+
+export function needsGeocode(s: Stop): boolean {
+  return s.lat == null && !!(s.address || s.city);
+}
+
+function query(s: Stop, state: string): string {
+  return [s.address, s.city, state].filter(Boolean).join(", ");
+}
+
+async function lookup(q: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const r = await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q=" + encodeURIComponent(q));
+    if (!r.ok) return null;
+    const j = (await r.json()) as { lat: string; lon: string }[];
+    if (!j.length) return null;
+    return { lat: +(+j[0].lat).toFixed(6), lng: +(+j[0].lon).toFixed(6) };
+  } catch {
+    return null;
+  }
+}

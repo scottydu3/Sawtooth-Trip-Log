@@ -4,22 +4,26 @@ import { authConfigured, currentAccount, initAuth, signIn, signOut } from "./aut
 import { Store } from "./store";
 import { CalendarSync } from "./calendar";
 import type { Contact, Data, Reminder, Status, Stop, Trip } from "./types";
+import { StopMap, CATEGORY, CATEGORY_COLOR, CATEGORY_LABEL, type Category } from "./map";
+import { Geocoder, needsGeocode } from "./geocode";
 
 const STATES: [string, string][] = [["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
 const STATE_NAME: Record<string, string> = Object.fromEntries(STATES);
 const STATUSES: [Status, string][] = [["new","New lead"],["follow","Follow up"],["quoted","Quoted"],["customer","Customer"],["nofit","Not a fit"]];
 const STATUS_NAME: Record<string, string> = Object.fromEntries(STATUSES);
 
-type View = "trips" | "trip" | "stop" | "reminders" | "stops" | "settings";
+type View = "trips" | "trip" | "stop" | "reminders" | "stops" | "settings" | "map";
 interface Route { view: View; id?: string; from?: View }
 
 const store = new Store();
 const cal = new CalendarSync(store);
+const geocoder = new Geocoder(store, (s) => store.get("trips", s.tripId)?.state || "");
+const stopMap = new StopMap(document.getElementById("mapWrap")!, (id) => go({ view: "stop", id, from: "map" }));
 let ready = false;
 let needsSignIn = false;
 let route: Route = { view: "trips" };
 const backStack: Route[] = [];
-const ui = { remFilter: "open", q: "", qStatus: "" };
+const ui = { remFilter: "open", q: "", qStatus: "", mapState: "", mapHide: new Set<Category>() };
 let armed: string | null = null;
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -88,6 +92,7 @@ function render() {
   else if (v === "reminders") parts = viewReminders();
   else if (v === "stops") parts = viewAllStops();
   else if (v === "settings") parts = viewSettings();
+  else if (v === "map") parts = viewMap();
   else parts = viewTrips();
   $("#hdr").innerHTML = parts[0];
   const active = document.activeElement as HTMLInputElement | null;
@@ -103,8 +108,9 @@ function render() {
     if (el && !el.closest(".sheet")) { el.focus(); try { el.setSelectionRange(selPos, selPos); } catch { /* not a text input */ } }
   }
   const overdue = openRems().filter((r) => new Date(r.dueAt).getTime() < Date.now()).length;
-  const cur = ({ trips: "trips", trip: "trips", stop: route.from || "trips", reminders: "reminders", stops: "stops", settings: "settings" } as Record<View, string>)[v];
-  $("#tabs").innerHTML = ([["trips", "Trips"], ["stops", "Stops"], ["reminders", "Reminders"], ["settings", "Setup"]] as const)
+  if (v === "map") renderMap(); else stopMap.hide();
+  const cur = ({ trips: "trips", trip: "trips", stop: route.from || "trips", reminders: "reminders", stops: "stops", settings: "settings", map: "map" } as Record<View, string>)[v];
+  $("#tabs").innerHTML = ([["trips", "Trips"], ["map", "Map"], ["stops", "Stops"], ["reminders", "Reminders"], ["settings", "Setup"]] as const)
     .map(([k, l]) => '<button data-act="tab" data-v="' + k + '"' + (cur === k ? ' aria-current="page"' : "") + ">" + l + (k === "reminders" && overdue ? '<span class="badge">' + overdue + "</span>" : "") + "</button>").join("");
 }
 
@@ -244,6 +250,33 @@ function viewAllStops(): [string, string] {
   return [hdr, html];
 }
 
+function mapStops(): [string, Stop][] {
+  return store.all("stops").filter(([, s]) => !ui.mapState || store.get("trips", s.tripId)?.state === ui.mapState);
+}
+function viewMap(): [string, string] {
+  const n = store.all("stops").filter(([, s]) => s.lat != null).length;
+  return [headerHTML("Map", n + " stops on the map", '<button class="hbtn" data-act="mapFit">Show all</button>'), ""];
+}
+function renderMap() {
+  geocoder.fillMissing();
+  const inState = mapStops();
+  const shown = inState.filter(([, s]) => !ui.mapHide.has(CATEGORY[s.status]));
+  const states = [...new Set(store.all("stops").map(([, s]) => store.get("trips", s.tripId)?.state).filter(Boolean) as string[])].sort();
+  const counts: Record<Category, number> = { customer: 0, potential: 0, nofit: 0 };
+  inState.forEach(([, s]) => { if (s.lat != null) counts[CATEGORY[s.status]]++; });
+  const missing = inState.filter(([, s]) => s.lat == null);
+  const noAddr = missing.filter(([, s]) => !needsGeocode(s)).length;
+  const locating = missing.length - noAddr;
+  $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "potential", "nofit"] as Category[]).map((c) =>
+    '<button data-act="mapCat" data-v="' + c + '" aria-pressed="' + !ui.mapHide.has(c) + '"><span class="dot" style="background:' + CATEGORY_COLOR[c] + '"></span>' + CATEGORY_LABEL[c] + " <b>" + counts[c] + "</b></button>").join("") +
+    (states.length > 1 ? '<select id="mapState" aria-label="Show one state"><option value="">All states</option>' + states.map((st) => '<option value="' + st + '"' + (ui.mapState === st ? " selected" : "") + ">" + esc(STATE_NAME[st] || st) + "</option>").join("") + "</select>" : "") +
+    "</div>" +
+    (locating ? '<div class="mapnote">Finding ' + locating + " address" + (locating > 1 ? "es" : "") + " on the map…</div>" : "") +
+    (noAddr ? '<div class="mapnote">' + noAddr + " stop" + (noAddr > 1 ? "s have" : " has") + " no address, so " + (noAddr > 1 ? "they're" : "it's") + " not on the map.</div>" : "") +
+    (!store.all("stops").length ? '<div class="mapnote">Your stops will show up here as colored dots once you add them.</div>' : "");
+  stopMap.show(shown, (s) => [s.city, store.get("trips", s.tripId)?.state].filter(Boolean).join(", "));
+}
+
 function viewSettings(): [string, string] {
   const hdr = headerHTML("Setup", "");
   const acct = currentAccount();
@@ -299,10 +332,14 @@ function stopSheet(tripId: string | null, id?: string) {
       ...(s as Stop), contacts: s.contacts || [], notes: s.notes || [], createdAt: s.createdAt || nowIso(),
       tripId: v.tripId || s.tripId!, name: v.name.trim(), kind: v.kind.trim(), address: v.address.trim(), city: v.city.trim(),
       visitedOn: v.visitedOn, phone: v.phone.trim(), status: v.status as Status, website: v.website.trim(),
-      ...(pendingGeo || {}),
+      ...(pendingGeo ? { ...pendingGeo, geo: "gps" as const } : {}),
     };
+    if (!pendingGeo && id && s.geo !== "gps" && (s.address !== doc.address || s.city !== doc.city)) {
+      delete doc.lat; delete doc.lng; delete doc.geo; // address changed: find it again
+    }
     if (!id && v.note && v.note.trim()) doc.notes = [{ id: uid(), text: v.note.trim(), at: nowIso() }];
     store.put("stops", nid, doc);
+    if (needsGeocode(doc)) geocoder.enqueue(nid);
     if (id && (s.name !== doc.name || s.address !== doc.address)) remsOf(nid).forEach(([rid, r]) => { if (!r.done && r.eventId) void cal.push(rid); });
     if (!id) go({ view: "stop", id: nid });
   });
@@ -411,7 +448,7 @@ document.addEventListener("click", async (e) => {
     case "newTrip": tripSheet(); break;
     case "editTrip": tripSheet(id); break;
     case "openTrip": go({ view: "trip", id }); break;
-    case "openStop": go({ view: "stop", id, from: route.view === "stops" ? "stops" : route.view === "reminders" ? "reminders" : "trips" }); break;
+    case "openStop": go({ view: "stop", id, from: route.view === "stops" || route.view === "reminders" || route.view === "map" ? route.view : "trips" }); break;
     case "newStop": stopSheet(id); break;
     case "editStop": stopSheet(null, id); break;
     case "useLocation": useLocation(); break;
@@ -442,6 +479,8 @@ document.addEventListener("click", async (e) => {
     case "delRem": deleteReminder(id); closeSheet(); break;
     case "toggleRem": { const r = store.get("reminders", id)!; store.put("reminders", id, { ...r, done: !r.done }); break; }
     case "calRetry": { const r = store.get("reminders", id)!; saveReminder(id, { ...r, eventId: r.calStatus === "removed" ? undefined : r.eventId }); break; }
+    case "mapCat": { const c = el.dataset.v as Category; if (ui.mapHide.has(c)) ui.mapHide.delete(c); else ui.mapHide.add(c); render(); break; }
+    case "mapFit": stopMap.fitAll(mapStops().filter(([, s]) => !ui.mapHide.has(CATEGORY[s.status]))); break;
     case "remFilter": ui.remFilter = el.dataset.v!; render(); break;
     case "export": exportCsv(); break;
     case "backup": download("trip-log-backup-" + today() + ".json", JSON.stringify(store.data, null, 1), "application/json"); break;
@@ -472,6 +511,7 @@ document.addEventListener("input", (e) => {
   const t = e.target as HTMLInputElement;
   if (t.id === "q") { ui.q = t.value; render(); }
   if (t.id === "qStatus") { ui.qStatus = t.value; render(); }
+  if (t.id === "mapState") { ui.mapState = t.value; render(); stopMap.fitAll(mapStops()); }
 });
 document.addEventListener("change", (e) => {
   const t = e.target as HTMLInputElement;
@@ -504,6 +544,7 @@ async function boot() {
     cal.enabled = true;
     cal.deviceId = deviceId();
     await store.connectRemote();
+    geocoder.fillMissing();
     await cal.pullAll();
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void cal.pullAll(); });
   }

@@ -36,6 +36,8 @@ export interface Stop {
   visitedOn: string;
   lat?: number;
   lng?: number;
+  /** Where lat/lng came from: phone GPS, a street address, or only the town (approximate). */
+  geo?: "gps" | "address" | "town";
   contacts: Contact[];
   notes: Note[];
   createdAt: string;
