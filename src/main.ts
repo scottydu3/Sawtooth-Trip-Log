@@ -23,7 +23,7 @@ let ready = false;
 let needsSignIn = false;
 let route: Route = { view: "trips" };
 const backStack: Route[] = [];
-const ui = { remFilter: "open", q: "", qStatus: "", mapState: "", mapHide: new Set<Category>() };
+const ui = { remFilter: "open", q: "", qStatus: "", mapState: "", mapHide: new Set<Category>(), sort: "date" as "date" | "name" };
 let armed: string | null = null;
 
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector(s) as T;
@@ -48,8 +48,15 @@ function toast(msg: string) {
 }
 
 /* ---------- derived ---------- */
-const stopsOf = (tid: string) => store.all("stops").filter(([, s]) => s.tripId === tid)
-  .sort((a, b) => (b[1].visitedOn || "").localeCompare(a[1].visitedOn || "") || (b[1].createdAt || "").localeCompare(a[1].createdAt || ""));
+/** Newest visit first, or A to Z by business name, per the viewer's choice. */
+const byChosenOrder = (a: [string, Stop], b: [string, Stop]) => {
+  const byName = a[1].name.localeCompare(b[1].name, undefined, { sensitivity: "base", numeric: true });
+  const byDate = (b[1].visitedOn || "").localeCompare(a[1].visitedOn || "") || (b[1].createdAt || "").localeCompare(a[1].createdAt || "");
+  return ui.sort === "name" ? byName || byDate : byDate || byName;
+};
+const sortControl = () => '<div class="seg" role="group" aria-label="Sort stops">' +
+  ([["date", "Date visited"], ["name", "A–Z"]] as const).map(([k, l]) => '<button data-act="sort" data-v="' + k + '" aria-pressed="' + (ui.sort === k) + '">' + l + "</button>").join("") + "</div>";
+const stopsOf = (tid: string) => store.all("stops").filter(([, s]) => s.tripId === tid).sort(byChosenOrder);
 const remsOf = (sid: string) => store.all("reminders").filter(([, r]) => r.stopId === sid).sort((a, b) => a[1].dueAt.localeCompare(b[1].dueAt));
 const openRems = () => store.all("reminders").map(([, r]) => r).filter((r) => !r.done);
 function dueClass(iso: string, done: boolean) { if (done) return ""; const t = +new Date(iso) - Date.now(); return t < 0 ? "over" : t < 48 * 3600e3 ? "soon" : ""; }
@@ -170,7 +177,7 @@ function viewTrip(id: string): [string, string] {
   const hdr = headerHTML(tripLabel(t), esc((STATE_NAME[t.state] || t.state) + " · " + [fmtDay(t.startOn), fmtDay(t.endOn)].filter(Boolean).join(" – ")), '<button class="hbtn" data-act="newStop" data-id="' + id + '">+ Stop</button>', true);
   const tally = STATUSES.map(([k, l]) => { const n = ss.filter(([, s]) => s.status === k).length; return n ? '<span class="pill st-' + k + '">' + n + " " + esc(l) + "</span>" : ""; }).join(" ");
   let html = tally ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + tally + "</div>" : "";
-  html += '<div class="section-h"><h2>Stops</h2><button data-act="newStop" data-id="' + id + '">+ Add stop</button></div>';
+  html += '<div class="section-h"><h2>Stops</h2><button data-act="newStop" data-id="' + id + '">+ Add stop</button></div>' + (ss.length > 1 ? sortControl() : "");
   html += ss.length ? '<div class="list">' + ss.map(([sid, s]) => stopRow(sid, s, false)).join("") + "</div>" : '<div class="empty"><strong>No stops yet</strong>Add each business you visit on this trip.</div>';
   const k = "trip:" + id;
   html += '<div class="actions" style="margin-top:22px"><button class="btn" data-act="editTrip" data-id="' + id + '">Edit trip</button><button class="btn danger' + (armed === k ? " arm" : "") + '" data-act="delTrip" data-id="' + id + '">' + (armed === k ? "Tap again to delete trip and its " + ss.length + " stops" : "Delete trip") + "</button></div>";
@@ -245,9 +252,9 @@ function viewAllStops(): [string, string] {
     const t = store.get("trips", s.tripId);
     const hay = [s.name, s.kind, s.address, s.city, s.phone, t?.state, t && STATE_NAME[t.state], ...(s.contacts || []).flatMap((c) => [c.name, c.role, c.email, c.phone]), ...(s.notes || []).map((n) => n.text)].join(" ").toLowerCase();
     return hay.includes(q);
-  }).sort((a, b) => (b[1].visitedOn || "").localeCompare(a[1].visitedOn || ""));
+  }).sort(byChosenOrder);
   let html = '<div class="filters"><input id="q" type="search" placeholder="Search names, contacts, notes, towns" value="' + esc(ui.q) + '" aria-label="Search stops"><select id="qStatus" aria-label="Filter by status"><option value="">Any status</option>' +
-    STATUSES.map(([k, l]) => '<option value="' + k + '"' + (ui.qStatus === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></div>";
+    STATUSES.map(([k, l]) => '<option value="' + k + '"' + (ui.qStatus === k ? " selected" : "") + ">" + l + "</option>").join("") + "</select></div>" + sortControl();
   html += list.length ? '<div class="list">' + list.map(([id, s]) => stopRow(id, s, true)).join("") + "</div>" : '<div class="empty">' + (store.all("stops").length ? "No stops match." : "No stops yet. Start a trip, then add stops to it.") + "</div>";
   return [hdr, html];
 }
@@ -486,6 +493,7 @@ document.addEventListener("click", async (e) => {
     case "calRetry": { const r = store.get("reminders", id)!; saveReminder(id, { ...r, eventId: r.calStatus === "removed" ? undefined : r.eventId }); break; }
     case "mapCat": { const c = el.dataset.v as Category; if (ui.mapHide.has(c)) ui.mapHide.delete(c); else ui.mapHide.add(c); render(); break; }
     case "mapFit": stopMap.fitAll(mapStops().filter(([, s]) => !ui.mapHide.has(CATEGORY[s.status]))); break;
+    case "sort": ui.sort = el.dataset.v === "name" ? "name" : "date"; pref("tripLog.sort", ui.sort); render(); break;
     case "remFilter": ui.remFilter = el.dataset.v!; render(); break;
     case "export": exportCsv(); break;
     case "backup": download("trip-log-backup-" + today() + ".json", JSON.stringify(store.data, null, 1), "application/json"); break;
@@ -539,6 +547,7 @@ setInterval(() => { const tag = document.activeElement?.tagName; if (!$("#sheetR
 
 /* ---------- boot ---------- */
 async function boot() {
+  if (pref("tripLog.sort") === "name") ui.sort = "name";
   render();
   let account = null;
   try { account = await initAuth(); } catch (e) { toast("Sign-in error: " + (e instanceof Error ? e.message : String(e))); }
