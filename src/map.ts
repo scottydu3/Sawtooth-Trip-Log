@@ -2,23 +2,25 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Status, Stop } from "./types";
 
-export type Category = "customer" | "potential" | "nofit";
+export type Category = "customer" | "potential" | "lead" | "nofit";
 
 export const CATEGORY: Record<Status, Category> = {
   customer: "customer",
-  new: "potential",
+  new: "lead",
   follow: "potential",
   quoted: "potential",
   nofit: "nofit",
 };
 export const CATEGORY_LABEL: Record<Category, string> = {
   customer: "Customer",
-  potential: "Potential",
-  nofit: "Not interested",
+  potential: "Quoted / follow up",
+  lead: "New lead",
+  nofit: "Not a fit",
 };
 export const CATEGORY_COLOR: Record<Category, string> = {
   customer: "#23a455",
   potential: "#f2b705",
+  lead: "#1f6fe0",
   nofit: "#d8402f",
 };
 
@@ -55,7 +57,7 @@ export class StopMap {
     this.layer.clearLayers();
     const pts: L.LatLngExpression[] = [];
     // Draw "not interested" first and customers last so the dots that matter most sit on top.
-    const order: Category[] = ["nofit", "potential", "customer"];
+    const order: Category[] = ["nofit", "lead", "potential", "customer"];
     const sorted = stops.slice().sort((a, b) => order.indexOf(CATEGORY[a[1].status]) - order.indexOf(CATEGORY[b[1].status]));
     for (const [id, s] of sorted) {
       if (s.lat == null || s.lng == null) continue;

@@ -49,7 +49,7 @@ main{padding-block:16px}
 .count{font:500 13px/1.2 var(--mono);color:var(--muted);text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .count b{display:block;font:700 18px/1.1 var(--display);color:var(--ink)}
 .pill{display:inline-block;font:600 11px/1 var(--body);letter-spacing:.06em;text-transform:uppercase;padding:4px 7px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
-.st-new{color:var(--info)} .st-follow{color:var(--warn)} .st-quoted{color:var(--link)} .st-customer{color:var(--ok)} .st-nofit{color:var(--quiet)}
+.st-new{color:var(--info)} .st-follow{color:var(--warn)} .st-quoted{color:var(--warn)} .st-customer{color:var(--ok)} .st-nofit{color:var(--bad)}
 .due{font:500 12px/1.3 var(--mono);font-variant-numeric:tabular-nums}
 .due.over{color:var(--bad)} .due.soon{color:var(--warn)}
 .empty{background:var(--card);border:1px dashed var(--line);border-radius:var(--r);padding:20px;color:var(--muted);text-align:left}

@@ -262,12 +262,12 @@ function renderMap() {
   const inState = mapStops();
   const shown = inState.filter(([, s]) => !ui.mapHide.has(CATEGORY[s.status]));
   const states = [...new Set(store.all("stops").map(([, s]) => store.get("trips", s.tripId)?.state).filter(Boolean) as string[])].sort();
-  const counts: Record<Category, number> = { customer: 0, potential: 0, nofit: 0 };
+  const counts: Record<Category, number> = { customer: 0, potential: 0, lead: 0, nofit: 0 };
   inState.forEach(([, s]) => { if (s.lat != null) counts[CATEGORY[s.status]]++; });
   const missing = inState.filter(([, s]) => s.lat == null);
   const noAddr = missing.filter(([, s]) => !needsGeocode(s)).length;
   const locating = missing.length - noAddr;
-  $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "potential", "nofit"] as Category[]).map((c) =>
+  $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "potential", "lead", "nofit"] as Category[]).map((c) =>
     '<button data-act="mapCat" data-v="' + c + '" aria-pressed="' + !ui.mapHide.has(c) + '"><span class="dot" style="background:' + CATEGORY_COLOR[c] + '"></span>' + CATEGORY_LABEL[c] + " <b>" + counts[c] + "</b></button>").join("") +
     (states.length > 1 ? '<select id="mapState" aria-label="Show one state"><option value="">All states</option>' + states.map((st) => '<option value="' + st + '"' + (ui.mapState === st ? " selected" : "") + ">" + esc(STATE_NAME[st] || st) + "</option>").join("") + "</select>" : "") +
     "</div>" +
