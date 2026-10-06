@@ -547,6 +547,8 @@ async function boot() {
     geocoder.fillMissing();
     await cal.pullAll();
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void cal.pullAll(); });
+    // Back in signal with the app open: send reminders made offline and place new addresses.
+    window.addEventListener("online", () => { void cal.pullAll(); geocoder.fillMissing(); });
   }
 }
 void boot();

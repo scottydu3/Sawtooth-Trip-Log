@@ -26,6 +26,23 @@ export default defineConfig({
       workbox: {
         navigateFallback: "index.html",
         globPatterns: ["**/*.{js,css,html,svg,png}"],
+        // Keep map tiles you've already looked at, so the map still has a background with no signal.
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/tile\.openstreetmap\.org\//,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "map-tiles",
+              expiration: { maxEntries: 3000, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\//,
+            handler: "StaleWhileRevalidate",
+            options: { cacheName: "fonts", cacheableResponse: { statuses: [0, 200] } },
+          },
+        ],
       },
     }),
   ],
