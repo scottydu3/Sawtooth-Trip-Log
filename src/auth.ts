@@ -1,4 +1,4 @@
-import { PublicClientApplication, InteractionRequiredAuthError, type AccountInfo } from "@azure/msal-browser";
+import { PublicClientApplication, InteractionRequiredAuthError, BrowserAuthError, type AccountInfo } from "@azure/msal-browser";
 
 export const SCOPES = ["User.Read", "Calendars.ReadWrite", "Files.ReadWrite"];
 /** Asked for separately, so the app keeps working before an admin has approved it. */
@@ -97,6 +97,10 @@ export async function getToken(scopes: string[] = SCOPES): Promise<string> {
   } catch (e) {
     // Don't jump to Microsoft's page mid-task; the app offers a Reconnect button instead.
     if (e instanceof InteractionRequiredAuthError) throw new ReconnectNeeded();
+    // After a day the stored renewal expires and MSAL retries in a hidden frame. Safari and the
+    // iPhone home-screen app block Microsoft's cookie there, so that try just times out. A pass
+    // through Microsoft's page fixes it, same as any other renewal.
+    if (e instanceof BrowserAuthError && navigator.onLine && e.errorCode !== "no_network_connectivity") throw new ReconnectNeeded();
     throw e;
   }
 }

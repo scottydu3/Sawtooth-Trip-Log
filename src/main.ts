@@ -8,6 +8,7 @@ import { StopMap, CATEGORY, CATEGORY_COLOR, CATEGORY_LABEL, type Category } from
 import { Geocoder, needsGeocode } from "./geocode";
 import { Photos } from "./photos";
 import { ContactSync, vcard } from "./contacts";
+import { parseBulk } from "./bulk";
 
 const STATES: [string, string][] = [["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
 const STATE_NAME: Record<string, string> = Object.fromEntries(STATES);
@@ -176,7 +177,7 @@ function stopRow(id: string, s: Stop, showTrip: boolean) {
   return '<button class="row" data-act="openStop" data-id="' + id + '"><span class="grow"><div class="t">' + esc(s.name) + '</div><div class="s">' +
     esc([s.city || s.address, c && c.name, showTrip && t ? t.state : ""].filter(Boolean).join(" · ")) +
     '</div></span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><span class="pill st-' + esc(s.status) + '">' + esc(STATUS_NAME[s.status] || "") +
-    '</span><span class="due">' + esc(fmtDay(s.visitedOn)) + "</span></span></button>";
+    '</span><span class="due">' + esc(fmtDay(s.visitedOn) || "Planned") + "</span></span></button>";
 }
 
 function viewTrip(id: string): [string, string] {
@@ -185,8 +186,8 @@ function viewTrip(id: string): [string, string] {
   const hdr = headerHTML(tripLabel(t), esc((STATE_NAME[t.state] || t.state) + " · " + [fmtDay(t.startOn), fmtDay(t.endOn)].filter(Boolean).join(" – ")), '<button class="hbtn" data-act="newStop" data-id="' + id + '">+ Stop</button>', true);
   const tally = STATUSES.map(([k, l]) => { const n = ss.filter(([, s]) => s.status === k).length; return n ? '<span class="pill st-' + k + '">' + n + " " + esc(l) + "</span>" : ""; }).join(" ");
   let html = tally ? '<div style="display:flex;flex-wrap:wrap;gap:6px">' + tally + "</div>" : "";
-  html += '<div class="section-h"><h2>Stops</h2><button data-act="newStop" data-id="' + id + '">+ Add stop</button></div>' + (ss.length > 1 ? sortControl() : "");
-  html += ss.length ? '<div class="list">' + ss.map(([sid, s]) => stopRow(sid, s, false)).join("") + "</div>" : '<div class="empty"><strong>No stops yet</strong>Add each business you visit on this trip.</div>';
+  html += '<div class="section-h"><h2>Stops</h2><span style="display:flex;gap:16px"><button data-act="bulkStops" data-id="' + id + '">+ Bulk stops</button><button data-act="newStop" data-id="' + id + '">+ Add stop</button></span></div>' + (ss.length > 1 ? sortControl() : "");
+  html += ss.length ? '<div class="list">' + ss.map(([sid, s]) => stopRow(sid, s, false)).join("") + "</div>" : '<div class="empty"><strong>No stops yet</strong>Add each business you visit on this trip, or use Bulk stops to paste in a list of places you plan to visit.</div>';
   const k = "trip:" + id;
   html += '<div class="actions" style="margin-top:22px"><button class="btn" data-act="editTrip" data-id="' + id + '">Edit trip</button><button class="btn danger' + (armed === k ? " arm" : "") + '" data-act="delTrip" data-id="' + id + '">' + (armed === k ? "Tap again to delete trip and its " + ss.length + " stops" : "Delete trip") + "</button></div>";
   return [hdr, html];
@@ -196,7 +197,7 @@ function viewStop(id: string): [string, string] {
   const s = store.get("stops", id)!;
   const t = store.get("trips", s.tripId);
   const hdr = headerHTML(s.name, t ? esc(t.state + " · " + tripLabel(t)) : "", '<button class="hbtn" data-act="editStop" data-id="' + id + '">Edit</button>', true);
-  let html = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px"><span class="pill st-' + esc(s.status) + '">' + esc(STATUS_NAME[s.status] || "") + '</span><span class="due">Visited ' + esc(fmtDay(s.visitedOn) || "—") + '</span></div><dl class="kv">' +
+  let html = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px"><span class="pill st-' + esc(s.status) + '">' + esc(STATUS_NAME[s.status] || "") + '</span><span class="due">' + (s.visitedOn ? "Visited " + esc(fmtDay(s.visitedOn)) : "Not visited yet") + '</span></div><dl class="kv">' +
     (s.kind ? "<dt>Type</dt><dd>" + esc(s.kind) + "</dd>" : "") +
     (s.address || s.city ? "<dt>Address</dt><dd>" + esc([s.address, s.city].filter(Boolean).join(", ")) + "</dd>" : "") +
     (s.phone ? '<dt>Main</dt><dd><a href="tel:' + esc(s.phone.replace(/[^\d+]/g, "")) + '" style="color:inherit">' + esc(s.phone) + "</a></dd>" : "") +
@@ -394,6 +395,34 @@ function stopSheet(tripId: string | null, id?: string) {
   });
 }
 
+/* Paste a list of planned stops; each becomes a stop on the trip, ready to fill in on the visit. */
+function bulkSheet(tripId: string) {
+  const sample = "Ace Hardware, 123 Main St, Boise\nMeridian Lumber, 45 E Pine Ave, Meridian\nNampa Supply, Nampa";
+  sheet("Bulk stops",
+    '<p class="hint" style="margin:0 0 10px">One business per line: <b>name, street address, town</b>. Rows copied from a spreadsheet, or a name with its address on the next line, work too.</p>' +
+    '<label>Businesses<textarea id="f_bulk" name="bulk" rows="9" placeholder="' + esc(sample) + '"></textarea></label>' +
+    sel("Status", "status", STATUSES, "new") + '<div id="bulkPreview" class="bulk-preview"></div>', (v) => {
+    const have = new Set(stopsOf(tripId).map(([, s]) => s.name.trim().toLowerCase()));
+    const entries = parseBulk(v.bulk).filter((e) => !have.has(e.name.toLowerCase()));
+    if (!entries.length) { toast(parseBulk(v.bulk).length ? "Those are all on this trip already" : "Paste at least one business"); return false; }
+    for (const e of entries) {
+      const nid = uid();
+      const doc: Stop = { tripId, name: capWords(e.name), kind: "", address: capWords(e.address), city: capWords(e.city), phone: "", website: "", status: v.status as Status, visitedOn: "", contacts: [], notes: [], createdAt: nowIso(), updatedAt: nowIso() };
+      store.put("stops", nid, doc);
+      if (needsGeocode(doc)) geocoder.enqueue(nid);
+    }
+    toast("Added " + entries.length + " stop" + (entries.length === 1 ? "" : "s") + ". They'll appear on the map as they're located.");
+    render();
+  });
+  const ta = $<HTMLTextAreaElement>("#f_bulk");
+  const preview = () => {
+    const have = new Set(stopsOf(tripId).map(([, s]) => s.name.trim().toLowerCase()));
+    const got = parseBulk(ta.value);
+    $("#bulkPreview").innerHTML = got.length ? '<p class="hint">' + got.length + " found</p><ol>" + got.map((e) => "<li><b>" + esc(capWords(e.name)) + "</b>" + (e.address || e.city ? "<span>" + esc(capWords([e.address, e.city].filter(Boolean).join(", "))) + "</span>" : '<span class="warn">No address, so it won\'t show on the map</span>') + (have.has(e.name.toLowerCase()) ? '<span class="warn">Already on this trip, will be skipped</span>' : "") + "</li>").join("") + "</ol>" : "";
+  };
+  ta.addEventListener("input", preview);
+}
+
 /* The rest of the New stop form, so a visit can be logged in one go. */
 const contactRow = (i: number) => '<div class="contactrow" data-row="' + i + '">' +
   '<div class="two">' + fld("Contact name", "c_name_" + i, "", "text", CAP) + fld("Title / role", "c_role_" + i, "", "text", 'placeholder="e.g. Owner"') + "</div>" +
@@ -525,12 +554,13 @@ document.addEventListener("click", async (e) => {
     case "signIn": try { await signIn(); } catch (err) { toast(err instanceof Error ? err.message : "Sign-in failed"); } break;
     case "signOut": await signOut(); break;
     case "reconnect": await reconnect(); break;
-    case "syncNow": void store.pull().then(() => cal.pullAll()); break;
+    case "syncNow": if (needsReconnect()) await reconnect(); else void store.pull().then(() => cal.pullAll()); break;
     case "newTrip": tripSheet(); break;
     case "editTrip": tripSheet(id); break;
     case "openTrip": go({ view: "trip", id }); break;
     case "openStop": go({ view: "stop", id, from: route.view === "stops" || route.view === "reminders" || route.view === "map" ? route.view : "trips" }); break;
     case "newStop": stopSheet(id); break;
+    case "bulkStops": bulkSheet(id); break;
     case "editStop": stopSheet(null, id); break;
     case "useLocation": useLocation(); break;
     case "contactRetry": void contactSync.push(id, el.dataset.c!); break;
