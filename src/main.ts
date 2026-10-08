@@ -12,7 +12,7 @@ import { parseBulk } from "./bulk";
 
 const STATES: [string, string][] = [["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
 const STATE_NAME: Record<string, string> = Object.fromEntries(STATES);
-const STATUSES: [Status, string][] = [["new","New lead"],["follow","Follow up"],["quoted","Quoted"],["customer","Customer"],["nofit","Not a fit"]];
+const STATUSES: [Status, string][] = [["new","New lead"],["follow","Follow up"],["quoted","Quoted"],["customer","Customer"],["nofit","Not a fit"],["competitor","Competitor"]];
 const STATUS_NAME: Record<string, string> = Object.fromEntries(STATUSES);
 
 type View = "trips" | "trip" | "stop" | "reminders" | "stops" | "settings" | "map";
@@ -286,13 +286,13 @@ function renderMap() {
   geocoder.fillMissing();
   const inState = mapStops();
   const shown = inState;
-  const counts: Record<Category, number> = { customer: 0, potential: 0, lead: 0, nofit: 0 };
+  const counts: Record<Category, number> = { customer: 0, potential: 0, lead: 0, nofit: 0, competitor: 0 };
   inState.forEach(([, s]) => { if (s.lat != null) counts[CATEGORY[s.status]]++; });
   const missing = inState.filter(([, s]) => s.lat == null);
   const noAddr = missing.filter(([, s]) => !needsGeocode(s)).length;
   const notFound = missing.filter(([id, s]) => needsGeocode(s) && geocoder.failed(id, s)).length;
   const locating = missing.length - noAddr - notFound;
-  $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "potential", "lead", "nofit"] as Category[]).map((c) =>
+  $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "potential", "lead", "nofit", "competitor"] as Category[]).map((c) =>
     '<span class="chip"><span class="dot" style="background:' + CATEGORY_COLOR[c] + '"></span>' + CATEGORY_LABEL[c] + " <b>" + counts[c] + "</b></span>").join("") +
     "</div>" +
     (locating ? '<div class="mapnote">Finding ' + locating + " address" + (locating > 1 ? "es" : "") + " on the map…</div>" : "") +
