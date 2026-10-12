@@ -756,4 +756,35 @@ async function boot() {
   }
 }
 void boot();
-registerSW({ immediate: true });
+
+/* ---------- app updates ---------- */
+// Check for a new version on every open and every return to the app, and switch to it
+// as soon as nothing is being typed, so a home-screen app never needs closing to update.
+let updateWaiting = false;
+const applyUpdate = registerSW({
+  immediate: true,
+  onNeedRefresh() { updateWaiting = true; maybeApplyUpdate(); },
+  onRegisteredSW(_url, reg) {
+    if (!reg) return;
+    const check = () => { if (navigator.onLine) void reg.update().catch(() => { /* offline or server hiccup: try next time */ }); };
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+    window.addEventListener("online", check);
+    setInterval(check, 30 * 60000);
+  },
+});
+function safeToReload() {
+  if (!ready || $("#sheetRoot").innerHTML) return false;
+  const tag = document.activeElement?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return false;
+  return [...document.querySelectorAll("textarea")].every((t) => !t.value.trim());
+}
+function maybeApplyUpdate() {
+  if (!updateWaiting || !safeToReload()) return;
+  updateWaiting = false;
+  try { sessionStorage.setItem("tripLog.justUpdated", "1"); } catch { /* storage blocked */ }
+  void applyUpdate(true);
+}
+// Waiting on an open form or a half-typed note: try again once it's closed or cleared.
+setInterval(maybeApplyUpdate, 3000);
+document.addEventListener("visibilitychange", maybeApplyUpdate);
+try { if (sessionStorage.getItem("tripLog.justUpdated")) { sessionStorage.removeItem("tripLog.justUpdated"); toast("App updated to the latest version"); } } catch { /* storage blocked */ }

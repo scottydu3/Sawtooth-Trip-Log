@@ -6,7 +6,8 @@ export default defineConfig({
   base: process.env.BASE_PATH || "/",
   plugins: [
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt" so the app picks the moment to switch versions (never mid-typing); see src/main.ts.
+      registerType: "prompt",
       includeAssets: ["icon.svg", "apple-touch-icon.png"],
       manifest: {
         name: "Sawtooth Trip Log",
