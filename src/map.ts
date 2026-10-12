@@ -42,6 +42,13 @@ export class StopMap {
   private moving: string | null = null;
   private names = new Map<string, string>();
 
+  // Live "you are here" position, watched only while the map is showing.
+  private watchId: number | null = null;
+  private here: L.LatLng | null = null;
+  private meDot: L.Marker | null = null;
+  private meRing: L.Circle | null = null;
+  private zoomToMe = false;
+
   constructor(private host: HTMLElement, private onOpen: (id: string) => void, private onMove: (id: string, lat: number, lng: number) => void) {}
 
   show(stops: [string, Stop][], label: (s: Stop) => string) {
@@ -70,8 +77,10 @@ export class StopMap {
         this.onMove(id, e.latlng.lat, e.latlng.lng);
       });
       window.addEventListener("resize", () => this.place());
+      this.addLocateButton();
     }
     this.map.invalidateSize();
+    this.watchMe();
     const key = JSON.stringify(stops.map(([id, s]) => [id, s.lat, s.lng, s.status, s.name]));
     if (key === this.lastKey) return;
     this.lastKey = key;
@@ -99,7 +108,85 @@ export class StopMap {
     if (pts.length) this.fit(pts);
   }
 
-  hide() { this.endMove(); this.host.hidden = true; }
+  hide() { this.endMove(); this.stopWatching(); this.host.hidden = true; }
+
+  /** The locate-me button: zoom to where you are now. */
+  locateMe() {
+    if (!this.map) return;
+    if (this.here) { this.map.setView(this.here, Math.max(this.map.getZoom(), 16)); return; }
+    this.zoomToMe = true;
+    this.host.querySelector(".locbtn")?.classList.add("busy");
+    this.watchMe();
+  }
+
+  private addLocateButton() {
+    const Locate = L.Control.extend({
+      onAdd: () => {
+        const b = L.DomUtil.create("button", "locbtn");
+        b.type = "button";
+        b.title = "Show where I am";
+        b.setAttribute("aria-label", "Show where I am");
+        b.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/></svg>';
+        L.DomEvent.disableClickPropagation(b);
+        L.DomEvent.on(b, "click", () => this.locateMe());
+        return b;
+      },
+    });
+    new Locate({ position: "bottomright" }).addTo(this.map!);
+  }
+
+  private watchMe() {
+    if (this.watchId != null || !("geolocation" in navigator)) {
+      if (this.zoomToMe && !("geolocation" in navigator)) this.locateFailed("This device can't share its location.");
+      return;
+    }
+    this.watchId = navigator.geolocation.watchPosition(
+      (p) => this.moveMe(p.coords.latitude, p.coords.longitude, p.coords.accuracy),
+      (err) => {
+        // Only speak up when the button was pressed; otherwise the map just works without the dot.
+        if (err.code === err.PERMISSION_DENIED) {
+          this.stopWatching();
+          if (this.zoomToMe) this.locateFailed("Location is off for this app. On iPhone: Settings › Privacy & Security › Location Services › Safari Websites › While Using the App. Then try again.");
+        } else if (this.zoomToMe && !this.here) this.locateFailed("Couldn't find your location yet. Try again in a moment, ideally with a clear view of the sky.");
+      },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 },
+    );
+  }
+
+  private stopWatching() {
+    if (this.watchId != null) navigator.geolocation.clearWatch(this.watchId);
+    this.watchId = null;
+  }
+
+  private moveMe(lat: number, lng: number, accuracy: number) {
+    if (!this.map) return;
+    this.here = L.latLng(lat, lng);
+    if (!this.meDot) {
+      this.meRing = L.circle(this.here, { radius: accuracy, color: "#1a73e8", weight: 1, opacity: 0.4, fillColor: "#1a73e8", fillOpacity: 0.12, interactive: false }).addTo(this.map);
+      this.meDot = L.marker(this.here, {
+        icon: L.divIcon({ className: "medot", html: "<span></span>", iconSize: [22, 22], iconAnchor: [11, 11] }),
+        interactive: false, keyboard: false, zIndexOffset: 1000,
+      }).addTo(this.map);
+    } else {
+      this.meDot.setLatLng(this.here);
+      this.meRing!.setLatLng(this.here).setRadius(accuracy);
+    }
+    if (this.zoomToMe) {
+      this.zoomToMe = false;
+      this.host.querySelector(".locbtn")?.classList.remove("busy");
+      this.map.setView(this.here, Math.max(this.map.getZoom(), 16));
+    }
+  }
+
+  private locateFailed(msg: string) {
+    this.zoomToMe = false;
+    this.host.querySelector(".locbtn")?.classList.remove("busy");
+    let n = this.host.querySelector<HTMLElement>(".loctoast");
+    if (!n) { n = document.createElement("div"); n.className = "loctoast"; this.host.appendChild(n); }
+    n.textContent = msg;
+    clearTimeout((n as any)._t);
+    (n as any)._t = setTimeout(() => n!.remove(), 8000);
+  }
 
   private startMove(id: string) {
     this.map?.closePopup();
