@@ -357,6 +357,7 @@ let pendingGeo: { lat: number; lng: number } | null = null;
 function stopSheet(tripId: string | null, id?: string) {
   const s: Partial<Stop> = id ? store.get("stops", id)! : { tripId: tripId!, status: "new", visitedOn: today() };
   pendingGeo = null;
+  geoFilled = { address: "", city: "" };
   const tripOpts = store.all("trips").map(([k, t]) => [k, t.state + " · " + tripLabel(t)] as [string, string]);
   const geo = "geolocation" in navigator ? '<div class="geo"><button type="button" class="btn sm" data-act="useLocation">Use my location</button><span class="hint" id="geoMsg" style="margin:0"></span></div>' : "";
   sheet(id ? "Edit stop" : "New stop", fld("Business name", "name", s.name, "text", "required " + CAP) + fld("Type of business", "kind", s.kind, "text", 'placeholder="e.g. Hardware store, contractor"') + geo + fld("Address", "address", s.address, "text", CAP) + '<div class="two">' + fld("Town", "city", s.city, "text", CAP) + fld("Visited", "visitedOn", s.visitedOn, "date") + "</div>" + '<div class="two">' + sel("Status", "status", STATUSES, s.status) + fld("Website", "website", s.website) + "</div>" +
@@ -444,36 +445,70 @@ function contactsFromForm(v: Record<string, string>): Contact[] {
     .filter((c) => c.name || c.phone || c.email).map((c) => ({ ...c, ...outlookPending() }));
 }
 
+// What "Use my location" last typed in, so a second tap can replace its own guess but never the user's typing.
+let geoFilled: { address: string; city: string } = { address: "", city: "" };
 function useLocation() {
   const msg = document.getElementById("geoMsg");
-  if (msg) msg.textContent = "Finding you…";
-  const failed = (err: GeolocationPositionError) => {
-    if (!msg) return;
-    msg.textContent = err.code === err.PERMISSION_DENIED
-      ? "Location is blocked for this app. On iPhone: Settings > Privacy & Security > Location Services > Safari Websites > While Using the App, then try again."
-      : "Couldn't find your location right now. Move somewhere with better signal and tap again.";
+  const say = (t: string) => { if (msg) msg.textContent = t; };
+  say("Finding you…");
+  // Watch the GPS for a few seconds and keep the sharpest fix: the first reading is often a rough
+  // Wi-Fi or cell-tower guess, and a cached one can be miles back down the road.
+  let best: GeolocationPosition | null = null;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    navigator.geolocation.clearWatch(watch);
+    clearTimeout(timer);
+    if (best) void located(best);
   };
-  // A precise GPS fix can be slow indoors; fall back to a quicker, rougher one before giving up.
-  const located = async (pos: GeolocationPosition) => {
-    pendingGeo = { lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6) };
-    if (msg) msg.textContent = "Location saved";
-    try {
-      // OpenStreetMap's free reverse geocoder, to fill the address fields.
-      const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=" + pendingGeo.lat + "&lon=" + pendingGeo.lng);
-      const j = await r.json();
-      const a = j.address || {};
-      const addr = document.getElementById("f_address") as HTMLInputElement | null;
-      const city = document.getElementById("f_city") as HTMLInputElement | null;
-      const street = [a.house_number, a.road].filter(Boolean).join(" ");
-      if (addr && !addr.value && street) addr.value = street;
-      if (city && !city.value) city.value = a.city || a.town || a.village || a.hamlet || "";
-      if (msg) msg.textContent = "Address filled in. Check it before saving.";
-    } catch { /* coordinates are still saved */ }
-  };
-  navigator.geolocation.getCurrentPosition(located, (err) => {
-    if (err.code === err.PERMISSION_DENIED) return failed(err);
-    navigator.geolocation.getCurrentPosition(located, failed, { enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 });
-  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  const watch = navigator.geolocation.watchPosition((pos) => {
+    if (!best || pos.coords.accuracy < best.coords.accuracy) best = pos;
+    say("Finding you… within about " + feet(best.coords.accuracy));
+    if (best.coords.accuracy <= 20) finish();
+  }, (err) => {
+    if (err.code === err.PERMISSION_DENIED) {
+      done = true;
+      navigator.geolocation.clearWatch(watch);
+      clearTimeout(timer);
+      say("Location is blocked for this app. On iPhone: Settings > Privacy & Security > Location Services > Safari Websites > While Using the App, then try again.");
+    }
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+  const timer = setTimeout(() => {
+    if (!best) say("Couldn't find your location right now. Step outside or near a window and tap again.");
+    finish();
+  }, 20000);
+  // Stop early once the fix is good enough, but give GPS a fair chance first.
+  setTimeout(() => { if (best && best.coords.accuracy <= 50) finish(); }, 8000);
+}
+
+function feet(m: number) {
+  const ft = m * 3.281;
+  return ft < 1000 ? Math.round(ft / 10) * 10 + " ft" : (ft / 5280).toFixed(1) + " miles";
+}
+
+async function located(pos: GeolocationPosition) {
+  const msg = document.getElementById("geoMsg");
+  const acc = pos.coords.accuracy;
+  pendingGeo = { lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6) };
+  const rough = acc > 100;
+  if (msg) msg.textContent = "Location saved (within about " + feet(acc) + ")";
+  try {
+    // OpenStreetMap's free reverse geocoder, to fill the address fields.
+    const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=" + pendingGeo.lat + "&lon=" + pendingGeo.lng);
+    const j = await r.json();
+    const a = j.address || {};
+    const addr = document.getElementById("f_address") as HTMLInputElement | null;
+    const city = document.getElementById("f_city") as HTMLInputElement | null;
+    // A rough fix can land on the wrong building, so only offer the street then, not a house number.
+    const street = [rough ? "" : a.house_number, a.road].filter(Boolean).join(" ");
+    const town = a.city || a.town || a.village || a.hamlet || "";
+    if (addr && street && (!addr.value || addr.value === geoFilled.address)) addr.value = geoFilled.address = street;
+    if (city && town && (!city.value || city.value === geoFilled.city)) city.value = geoFilled.city = town;
+    if (msg) msg.textContent = rough
+      ? "Your phone could only place you within about " + feet(acc) + ", so the address is a rough guess. Type the real one in, or step outside and tap again."
+      : "Address filled in (within about " + feet(acc) + "). Check it and fix it if needed before saving.";
+  } catch { /* coordinates are still saved */ }
 }
 
 function contactSheet(stopId: string, cid?: string) {
