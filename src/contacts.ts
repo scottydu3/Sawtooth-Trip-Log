@@ -61,11 +61,12 @@ export class ContactSync {
     this.store.put("stops", stopId, { ...cur, contacts: (cur.contacts || []).map((x) => (x.id === contactId ? { ...x, outlookId, outlookStatus: status } : x)) }, false);
   }
 
-  /** Save contacts added offline, or that failed before (e.g. before the permission was granted). */
+  /** Save contacts added offline, ones that failed before (e.g. before the permission was granted),
+   *  and ones never sent at all (added before this feature, or while it was off). */
   async pushPending() {
     if (!this.enabled || !this.isOn()) return;
     for (const [sid, s] of this.store.all("stops")) {
-      for (const c of s.contacts || []) if (c.outlookStatus === "pending" || c.outlookStatus === "error") await this.push(sid, c.id);
+      for (const c of s.contacts || []) if (c.outlookStatus === "pending" || c.outlookStatus === "error" || (!c.outlookStatus && !c.outlookId)) await this.push(sid, c.id);
     }
   }
 }

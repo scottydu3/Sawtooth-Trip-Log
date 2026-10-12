@@ -46,6 +46,22 @@ describe("Outlook contacts", () => {
     expect(store.get("stops", "s1")!.contacts[0].outlookStatus).toBe("error");
   });
 
+  it("sends contacts that were never sent before, and leaves saved ones alone", async () => {
+    const posts: string[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: any = {}) => { posts.push(JSON.parse(init.body).givenName); return new Response(JSON.stringify({ id: "olk-" + posts.length }), { status: 201 }); });
+    const store = new Store();
+    const base = stop().contacts[0];
+    store.put("stops", "s1", { ...stop(), contacts: [
+      { ...base, id: "old", name: "Old Timer", outlookStatus: undefined },
+      { ...base, id: "done", name: "Already Saved", outlookId: "olk-x", outlookStatus: "ok" },
+    ] });
+    const sync = new ContactSync(store, () => "CA", () => true);
+    sync.enabled = true;
+    await sync.pushPending();
+    expect(posts).toEqual(["Old"]);
+    expect(store.get("stops", "s1")!.contacts[0]).toMatchObject({ outlookId: "olk-1", outlookStatus: "ok" });
+  });
+
   it("does nothing when turned off in Setup", async () => {
     const f = vi.fn(); vi.stubGlobal("fetch", f);
     const store = new Store();
