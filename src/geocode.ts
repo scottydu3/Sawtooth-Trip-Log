@@ -60,7 +60,7 @@ export function needsGeocode(s: Stop): boolean {
 }
 
 /** Bumped when the lookup gets smarter, so pins found the old way are looked up once more. */
-const GEO_VERSION = 2;
+const GEO_VERSION = 3;
 
 /** A stop with no pin yet, or an address pin from an older, less careful lookup. Hand-placed and GPS pins are never touched. */
 function needsLookup(s: Stop): boolean {
@@ -81,7 +81,7 @@ const pause = () => new Promise((r) => setTimeout(r, 1100));
  * Only a match on the building itself counts as exact. A match on just the street or the town
  * is kept as a fallback while the other searches get a chance to find the building.
  */
-export async function locate(s: Stop, state: string, wait = pause): Promise<{ lat: number; lng: number; exact: boolean } | null | "error"> {
+export async function locate(s: Stop, state: string, wait = pause, census = censusLookup): Promise<{ lat: number; lng: number; exact: boolean } | null | "error"> {
   const tries: [string[], "place" | "town"][] = [
     [[s.address, s.city, state], "place"],
     [[s.address, state], "place"],
@@ -94,7 +94,14 @@ export async function locate(s: Stop, state: string, wait = pause): Promise<{ la
   const seen = new Set<string>();
   let errored = false;
   let rough: { lat: number; lng: number; rank: number } | null = null;
+  let askedCensus = false;
   for (const [parts, kind] of tries) {
+    if (!askedCensus && parts[0] !== s.address && s.address && state) {
+      askedCensus = true;
+      const hit = await census(s.address, s.city, state);
+      if (hit === "error") errored = true;
+      else if (hit) return { ...hit, exact: true };
+    }
     if (!parts[0]) continue; // no street address / name / town for this try
     if (kind === "place" && !parts.slice(1).some(Boolean)) continue; // a street or name alone could be anywhere
     if (kind === "town" && rough) break; // already have something closer than the town center
@@ -125,4 +132,27 @@ async function lookup(q: string): Promise<{ lat: number; lng: number; rank: numb
   } catch {
     return "error";
   }
+}
+
+/**
+ * The US Census Bureau's free address finder, which places a house number along the road using
+ * county address ranges. It doesn't allow ordinary browser requests (no CORS), only JSONP.
+ */
+export function censusLookup(street: string, city: string, state: string): Promise<{ lat: number; lng: number } | null | "error"> {
+  return new Promise((resolve) => {
+    const cb = "censusCb" + Math.random().toString(36).slice(2);
+    const w = window as unknown as Record<string, unknown>;
+    const el = document.createElement("script");
+    const done = (v: { lat: number; lng: number } | null | "error") => { clearTimeout(timer); delete w[cb]; el.remove(); resolve(v); };
+    const timer = setTimeout(() => done("error"), 15000);
+    w[cb] = (j: { result?: { addressMatches?: { coordinates: { x: number; y: number } }[] } }) => {
+      const m = j?.result?.addressMatches?.[0];
+      done(m ? { lat: +m.coordinates.y.toFixed(6), lng: +m.coordinates.x.toFixed(6) } : null);
+    };
+    const q = new URLSearchParams({ street, state, benchmark: "Public_AR_Current", format: "jsonp", callback: cb });
+    if (city) q.set("city", city);
+    el.src = "https://geocoding.geo.census.gov/geocoder/locations/address?" + q.toString();
+    el.onerror = () => done("error");
+    document.head.appendChild(el);
+  });
 }
