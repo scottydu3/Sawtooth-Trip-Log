@@ -27,7 +27,10 @@ const stateOfStop = (s: Stop) => store.get("trips", s.tripId)?.state || "";
 const contactsOn = () => pref("tripLog.contactsToOutlook") !== "off";
 const contactSync = new ContactSync(store, stateOfStop, contactsOn);
 const outlookPending = () => (contactSync.enabled && contactsOn() ? { outlookStatus: "pending" as const } : {});
-const stopMap = new StopMap(document.getElementById("mapWrap")!, (id) => go({ view: "stop", id, from: "map" }));
+const stopMap = new StopMap(document.getElementById("mapWrap")!, (id) => go({ view: "stop", id, from: "map" }), (id, lat, lng) => {
+  const s = store.get("stops", id);
+  if (s) store.put("stops", id, { ...s, lat: +lat.toFixed(6), lng: +lng.toFixed(6), geo: "manual" });
+});
 let ready = false;
 let needsSignIn = false;
 let route: Route = { view: "trips" };
@@ -372,8 +375,8 @@ function stopSheet(tripId: string | null, id?: string) {
       visitedOn: v.visitedOn, phone: (v.phone ?? "").trim(), status: v.status as Status, website: v.website.trim(),
       ...(pendingGeo ? { ...pendingGeo, geo: "gps" as const } : {}),
     };
-    if (!pendingGeo && id && s.geo !== "gps" && (s.address !== doc.address || s.city !== doc.city)) {
-      delete doc.lat; delete doc.lng; delete doc.geo; // address changed: find it again
+    if (!pendingGeo && id && s.geo !== "gps" && s.geo !== "manual" && (s.address !== doc.address || s.city !== doc.city)) {
+      delete doc.lat; delete doc.lng; delete doc.geo; delete doc.geoVersion; // address changed: find it again
     }
     const newPhotos = id ? [] : [...(document.getElementById("f_photos") as HTMLInputElement | null)?.files || []];
     if (!id) {

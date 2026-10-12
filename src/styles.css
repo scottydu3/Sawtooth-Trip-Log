@@ -133,6 +133,9 @@ nav.tabs .badge{display:inline-block;min-width:18px;padding:1px 5px;margin-left:
 .pop-t{font-weight:600}
 .pop-s{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
 .pop .btn{margin-top:6px}
+.pop-b{display:flex;gap:6px}
+.movebar{position:absolute;left:12px;right:12px;bottom:28px;z-index:1000;display:flex;gap:10px;align-items:center;justify-content:space-between;background:#021444;color:#fff;padding:10px 12px;border-radius:10px;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+#mapWrap.moving #map{cursor:crosshair}
 
 .addlink{color:var(--link);font-weight:600;cursor:pointer;padding:4px 0}
 .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
@@ -158,3 +161,4 @@ nav.tabs .badge{display:inline-block;min-width:18px;padding:1px 5px;margin-left:
 .bulk-preview li{margin:0 0 6px}
 .bulk-preview li span{display:block;color:var(--muted);font-size:12px}
 .bulk-preview li span.warn{color:var(--flag)}
+#mapWrap.moving #mapPanel{display:none}

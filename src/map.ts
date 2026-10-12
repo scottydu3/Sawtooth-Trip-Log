@@ -39,7 +39,10 @@ export class StopMap {
   private fitted = false;
   private lastKey = "";
 
-  constructor(private host: HTMLElement, private onOpen: (id: string) => void) {}
+  private moving: string | null = null;
+  private names = new Map<string, string>();
+
+  constructor(private host: HTMLElement, private onOpen: (id: string) => void, private onMove: (id: string, lat: number, lng: number) => void) {}
 
   show(stops: [string, Stop][], label: (s: Stop) => string) {
     this.host.hidden = false;
@@ -55,6 +58,16 @@ export class StopMap {
       this.host.addEventListener("click", (e) => {
         const b = (e.target as HTMLElement).closest<HTMLElement>("[data-open-stop]");
         if (b) this.onOpen(b.dataset.openStop!);
+        const mv = (e.target as HTMLElement).closest<HTMLElement>("[data-move-pin]");
+        if (mv) this.startMove(mv.dataset.movePin!);
+        if ((e.target as HTMLElement).closest("[data-move-cancel]")) this.endMove();
+      });
+      // While moving a pin, the next tap on the map is where the stop really is.
+      this.map.on("click", (e: L.LeafletMouseEvent) => {
+        if (!this.moving) return;
+        const id = this.moving;
+        this.endMove();
+        this.onMove(id, e.latlng.lat, e.latlng.lng);
       });
       window.addEventListener("resize", () => this.place());
     }
@@ -63,6 +76,7 @@ export class StopMap {
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.layer.clearLayers();
+    this.names = new Map(stops.map(([id, s]) => [id, s.name]));
     const pts: L.LatLngExpression[] = [];
     // Draw "not interested" first and customers last so the dots that matter most sit on top.
     const order: Category[] = ["competitor", "nofit", "lead", "follow", "potential", "dealer", "customer"];
@@ -85,7 +99,22 @@ export class StopMap {
     if (pts.length) this.fit(pts);
   }
 
-  hide() { this.host.hidden = true; }
+  hide() { this.endMove(); this.host.hidden = true; }
+
+  private startMove(id: string) {
+    this.map?.closePopup();
+    this.moving = id;
+    this.host.classList.add("moving");
+    let bar = this.host.querySelector<HTMLElement>(".movebar");
+    if (!bar) { bar = document.createElement("div"); bar.className = "movebar"; this.host.appendChild(bar); }
+    bar.innerHTML = "<span>Zoom in and tap the map where <b>" + esc(this.names.get(id) || "this stop") + '</b> really is.</span><button class="btn sm" data-move-cancel>Cancel</button>';
+  }
+
+  private endMove() {
+    this.moving = null;
+    this.host.classList.remove("moving");
+    this.host.querySelector(".movebar")?.remove();
+  }
 
   private fit(pts: L.LatLngExpression[]) {
     if (!this.map) return;
@@ -110,6 +139,6 @@ function popupHTML(id: string, s: Stop, sub: string) {
   const contact = (s.contacts || [])[0];
   return '<div class="pop"><div class="pop-t">' + esc(s.name) + '</div><div class="pop-s"><span class="dot" style="background:' + CATEGORY_COLOR[cat] + '"></span>' + esc(CATEGORY_LABEL[cat]) + (sub ? " · " + esc(sub) : "") + "</div>" +
     (contact ? '<div class="pop-s">' + esc([contact.name, contact.role].filter(Boolean).join(", ")) + "</div>" : "") +
-    (s.geo === "town" ? '<div class="pop-s">Pin is the town center. Add a street address for an exact spot.</div>' : "") +
-    '<button class="btn sm primary" data-open-stop="' + esc(id) + '">Open stop</button></div>';
+    (s.geo === "town" ? '<div class="pop-s">This pin is approximate. Tap Move pin to put it in the right spot.</div>' : "") +
+    '<div class="pop-b"><button class="btn sm primary" data-open-stop="' + esc(id) + '">Open stop</button><button class="btn sm" data-move-pin="' + esc(id) + '">Move pin</button></div></div>';
 }

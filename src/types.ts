@@ -49,8 +49,10 @@ export interface Stop {
   visitedOn: string;
   lat?: number;
   lng?: number;
-  /** Where lat/lng came from: phone GPS, a street address, or only the town (approximate). */
-  geo?: "gps" | "address" | "town";
+  /** Where lat/lng came from: phone GPS, placed by hand on the map, the building at the address, or approximate (street or town). */
+  geo?: "gps" | "manual" | "address" | "town";
+  /** Which version of the address lookup placed the pin (see geocode.ts). */
+  geoVersion?: number;
   contacts: Contact[];
   notes: Note[];
   photos?: Photo[];
