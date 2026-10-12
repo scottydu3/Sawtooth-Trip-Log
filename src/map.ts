@@ -2,7 +2,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Status, Stop } from "./types";
 
-export type Category = "customer" | "potential" | "follow" | "lead" | "nofit" | "competitor";
+export type Category = "customer" | "potential" | "follow" | "lead" | "nofit" | "competitor" | "dealer";
 
 export const CATEGORY: Record<Status, Category> = {
   customer: "customer",
@@ -11,6 +11,7 @@ export const CATEGORY: Record<Status, Category> = {
   quoted: "potential",
   nofit: "nofit",
   competitor: "competitor",
+  dealer: "dealer",
 };
 export const CATEGORY_LABEL: Record<Category, string> = {
   customer: "Customer",
@@ -19,6 +20,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   lead: "New lead",
   nofit: "Not a fit",
   competitor: "Competitor",
+  dealer: "Dealer",
 };
 export const CATEGORY_COLOR: Record<Category, string> = {
   customer: "#23a455",
@@ -27,6 +29,7 @@ export const CATEGORY_COLOR: Record<Category, string> = {
   lead: "#1f6fe0",
   nofit: "#d8402f",
   competitor: "#111111",
+  dealer: "#e8559a",
 };
 
 /** The full-screen map of every stop, one colored dot per stop. */
@@ -62,7 +65,7 @@ export class StopMap {
     this.layer.clearLayers();
     const pts: L.LatLngExpression[] = [];
     // Draw "not interested" first and customers last so the dots that matter most sit on top.
-    const order: Category[] = ["competitor", "nofit", "lead", "follow", "potential", "customer"];
+    const order: Category[] = ["competitor", "nofit", "lead", "follow", "potential", "dealer", "customer"];
     const sorted = stops.slice().sort((a, b) => order.indexOf(CATEGORY[a[1].status]) - order.indexOf(CATEGORY[b[1].status]));
     for (const [id, s] of sorted) {
       if (s.lat == null || s.lng == null) continue;

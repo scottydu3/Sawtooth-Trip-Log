@@ -1,4 +1,4 @@
-export type Status = "new" | "follow" | "quoted" | "customer" | "nofit" | "competitor";
+export type Status = "new" | "follow" | "quoted" | "customer" | "nofit" | "competitor" | "dealer";
 
 export interface Trip {
   state: string;
