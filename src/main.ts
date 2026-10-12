@@ -208,7 +208,8 @@ function viewStop(id: string): [string, string] {
   html += '<div class="section-h"><h2>Contacts</h2><button data-act="newContact" data-id="' + id + '">+ Add contact</button></div>';
   const cs = s.contacts || [];
   html += cs.length ? '<div class="list">' + cs.map((c) => '<div class="card contact"><div style="display:flex;justify-content:space-between;gap:8px"><div><div class="name">' + esc(c.name || "Unnamed") + "</div>" + (c.role ? '<div style="color:var(--muted);font-size:13px">' + esc(c.role) + "</div>" : "") + '</div><button class="btn sm" data-act="editContact" data-id="' + id + '" data-c="' + esc(c.id) + '">Edit</button></div>' +
-    (c.phone ? '<div class="line">' + esc(c.phone) + ' <a class="btn sm" href="tel:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Call</a><a class="btn sm" href="sms:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Text</a></div>' : "") +
+    (c.phone ? '<div class="line"><span class="plabel">Cell</span>' + esc(c.phone) + ' <a class="btn sm" href="tel:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Call</a><a class="btn sm" href="sms:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Text</a></div>' : "") +
+    (c.workPhone ? '<div class="line"><span class="plabel">Work</span>' + esc(c.workPhone) + ' <a class="btn sm" href="tel:' + esc(c.workPhone.replace(/[^\d+]/g, "")) + '">Call</a></div>' : "") +
     (c.email ? '<div class="line">' + esc(c.email) + ' <a class="btn sm" href="mailto:' + esc(c.email) + '">Email</a><button class="btn sm" data-act="copy" data-v="' + esc(c.email) + '">Copy</button></div>' : "") +
     (c.notes ? '<div style="font-size:14px;color:var(--muted)">' + esc(c.notes) + "</div>" : "") +
     '<div class="line" style="font-family:var(--body)">' + '<button class="btn sm" data-act="saveVcard" data-id="' + id + '" data-c="' + esc(c.id) + '">Save to phone</button>' +
@@ -266,7 +267,7 @@ function viewAllStops(): [string, string] {
     if (ui.qStatus && s.status !== ui.qStatus) return false;
     if (!q) return true;
     const t = store.get("trips", s.tripId);
-    const hay = [s.name, s.kind, s.address, s.city, s.phone, t?.state, t && STATE_NAME[t.state], ...(s.contacts || []).flatMap((c) => [c.name, c.role, c.email, c.phone]), ...(s.notes || []).map((n) => n.text)].join(" ").toLowerCase();
+    const hay = [s.name, s.kind, s.address, s.city, s.phone, t?.state, t && STATE_NAME[t.state], ...(s.contacts || []).flatMap((c) => [c.name, c.role, c.email, c.phone, c.workPhone]), ...(s.notes || []).map((n) => n.text)].join(" ").toLowerCase();
     return hay.includes(q);
   }).sort(byChosenOrder);
   let html = '<div class="filters"><input id="q" type="search" placeholder="Search names, contacts, notes, towns" value="' + esc(ui.q) + '" aria-label="Search stops"><select id="qStatus" aria-label="Filter by status"><option value="">Any status</option>' +
@@ -427,7 +428,8 @@ function bulkSheet(tripId: string) {
 /* The rest of the New stop form, so a visit can be logged in one go. */
 const contactRow = (i: number) => '<div class="contactrow" data-row="' + i + '">' +
   '<div class="two">' + fld("Contact name", "c_name_" + i, "", "text", CAP) + fld("Title / role", "c_role_" + i, "", "text", 'placeholder="e.g. Owner"') + "</div>" +
-  '<div class="two">' + fld("Phone", "c_phone_" + i, "", "tel") + fld("Email", "c_email_" + i, "", "email") + "</div></div>";
+  '<div class="two">' + fld("Cell phone", "c_phone_" + i, "", "tel") + fld("Work phone", "c_work_" + i, "", "tel") + "</div>" +
+  fld("Email", "c_email_" + i, "", "email") + "</div>";
 
 function newStopExtras(): string {
   const d = new Date(); d.setDate(d.getDate() + 3); d.setHours(9, 0, 0, 0);
@@ -441,8 +443,8 @@ function newStopExtras(): string {
 
 function contactsFromForm(v: Record<string, string>): Contact[] {
   const rows = Object.keys(v).filter((k) => k.startsWith("c_name_")).map((k) => k.slice(7));
-  return rows.map((i) => ({ id: uid(), name: (v["c_name_" + i] || "").trim(), role: (v["c_role_" + i] || "").trim(), phone: (v["c_phone_" + i] || "").trim(), email: (v["c_email_" + i] || "").trim(), notes: "" }))
-    .filter((c) => c.name || c.phone || c.email).map((c) => ({ ...c, ...outlookPending() }));
+  return rows.map((i) => ({ id: uid(), name: (v["c_name_" + i] || "").trim(), role: (v["c_role_" + i] || "").trim(), phone: (v["c_phone_" + i] || "").trim(), workPhone: (v["c_work_" + i] || "").trim(), email: (v["c_email_" + i] || "").trim(), notes: "" }))
+    .filter((c) => c.name || c.phone || c.workPhone || c.email).map((c) => ({ ...c, ...outlookPending() }));
 }
 
 // What "Use my location" last typed in, so a second tap can replace its own guess but never the user's typing.
@@ -516,8 +518,8 @@ function contactSheet(stopId: string, cid?: string) {
   const cs = (s.contacts || []).slice();
   const c: Partial<Contact> = cid ? cs.find((x) => x.id === cid)! : {};
   const delBtn = cid ? '<button type="button" class="btn danger" data-act="delContact" data-id="' + stopId + '" data-c="' + esc(cid) + '" style="margin-right:auto">Delete</button>' : "";
-  sheet(cid ? "Edit contact" : "New contact", fld("Name", "name", c.name, "text", "required " + CAP) + fld("Title / role", "role", c.role, "text", 'placeholder="e.g. Owner, purchasing manager"') + fld("Phone", "phone", c.phone, "tel") + fld("Email", "email", c.email, "email") + area("About this person", "notes", c.notes), (v) => {
-    const nc: Contact = { ...c, id: cid || uid(), name: v.name.trim(), role: v.role.trim(), phone: v.phone.trim(), email: v.email.trim(), notes: v.notes.trim(), ...(cid && !c.outlookId ? {} : outlookPending()) };
+  sheet(cid ? "Edit contact" : "New contact", fld("Name", "name", c.name, "text", "required " + CAP) + fld("Title / role", "role", c.role, "text", 'placeholder="e.g. Owner, purchasing manager"') + '<div class="two">' + fld("Cell phone", "phone", c.phone, "tel") + fld("Work phone", "workPhone", c.workPhone, "tel") + "</div>" + fld("Email", "email", c.email, "email") + area("About this person", "notes", c.notes), (v) => {
+    const nc: Contact = { ...c, id: cid || uid(), name: v.name.trim(), role: v.role.trim(), phone: v.phone.trim(), workPhone: v.workPhone.trim(), email: v.email.trim(), notes: v.notes.trim(), ...(cid && !c.outlookId ? {} : outlookPending()) };
     const next = cid ? cs.map((x) => (x.id === cid ? nc : x)) : [...cs, nc];
     store.put("stops", stopId, { ...s, contacts: next });
     if (nc.outlookStatus === "pending") void contactSync.push(stopId, nc.id);
@@ -571,7 +573,7 @@ function exportCsv() {
   store.all("stops").forEach(([, s]) => {
     const t = store.get("trips", s.tripId);
     rows.push([t?.state, tripLabel(t), s.name, s.kind, STATUS_NAME[s.status], s.visitedOn, s.address, s.city, s.phone, s.website,
-      (s.contacts || []).map((c) => [c.name, c.role, c.phone, c.email].filter(Boolean).join(" / ")).join("; "),
+      (s.contacts || []).map((c) => [c.name, c.role, c.phone && "cell " + c.phone, c.workPhone && "work " + c.workPhone, c.email].filter(Boolean).join(" / ")).join("; "),
       (s.notes || []).map((n) => n.at.slice(0, 10) + ": " + n.text).join(" | ")]);
   });
   download("sales-stops-" + today() + ".csv", rows.map((r) => r.map(q).join(",")).join("\r\n"), "text/csv");

@@ -23,6 +23,7 @@ export function outlookContact(c: Contact, stop: Stop, state: string) {
     companyName: stop.name,
     jobTitle: c.role || undefined,
     mobilePhone: c.phone || undefined,
+    businessPhones: c.workPhone ? [c.workPhone] : [],
     emailAddresses: c.email ? [{ address: c.email, name: c.name || c.email }] : [],
     businessAddress: { street: stop.address || "", city: stop.city || "", state, countryOrRegion: "United States" },
     personalNotes: [c.notes, "Added from Sawtooth Trip Log" + (stop.visitedOn ? ", visited " + stop.visitedOn : "")].filter(Boolean).join("\n"),
@@ -40,7 +41,7 @@ export class ContactSync {
     if (!this.enabled || !this.isOn() || !navigator.onLine) return;
     const s = this.store.get("stops", stopId);
     const c = s?.contacts?.find((x) => x.id === contactId);
-    if (!s || !c || !(c.name || c.phone || c.email)) return;
+    if (!s || !c || !(c.name || c.phone || c.workPhone || c.email)) return;
     const body = outlookContact(c, s, this.stateOf(s));
     let status: Contact["outlookStatus"] = "ok";
     let outlookId = c.outlookId;
@@ -80,6 +81,7 @@ export function vcard(c: Contact, stop: Stop, state: string): string {
     "ORG:" + e(stop.name),
     c.role ? "TITLE:" + e(c.role) : "",
     c.phone ? "TEL;TYPE=CELL:" + e(c.phone) : "",
+    c.workPhone ? "TEL;TYPE=WORK:" + e(c.workPhone) : "",
     c.email ? "EMAIL;TYPE=WORK:" + e(c.email) : "",
     stop.address || stop.city ? "ADR;TYPE=WORK:;;" + e(stop.address || "") + ";" + e(stop.city || "") + ";" + e(state) + ";;USA" : "",
     "NOTE:" + e([c.notes, "Sawtooth Trip Log"].filter(Boolean).join(" - ")),

@@ -19,7 +19,7 @@ function eventBody(r: Reminder, stop?: Stop) {
   if (stop) {
     lines.push("", "Stop: " + stop.name);
     if (stop.address) lines.push(stop.address);
-    for (const c of stop.contacts || []) lines.push([c.name, c.role, c.phone, c.email].filter(Boolean).join(" · "));
+    for (const c of stop.contacts || []) lines.push([c.name, c.role, c.phone && "cell " + c.phone, c.workPhone && "work " + c.workPhone, c.email].filter(Boolean).join(" · "));
   }
   lines.push("", "Added by Sawtooth Trip Log");
   const start = new Date(r.dueAt);

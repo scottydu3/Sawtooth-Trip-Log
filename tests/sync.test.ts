@@ -119,7 +119,7 @@ describe("Outlook calendar sync", () => {
     expect(ev.subject).toBe("Call Dana");
     expect(ev.start).toEqual({ dateTime: "2026-10-09T15:00:00.000", timeZone: "UTC" });
     expect(ev.end.dateTime).toBe("2026-10-09T15:30:00.000");
-    expect(ev.body.content).toContain("Dana Ruiz · Owner · 208-555-0142");
+    expect(ev.body.content).toContain("Dana Ruiz · Owner · cell 208-555-0142");
 
     // Moved in Outlook to an hour later, 60 min long.
     ev.start = { dateTime: "2026-10-09T16:00:00.0000000", timeZone: "UTC" };

@@ -13,7 +13,10 @@ export interface Contact {
   id: string;
   name: string;
   role: string;
+  /** Cell phone. */
   phone: string;
+  /** Office or desk line; missing on contacts saved before it was added. */
+  workPhone?: string;
   email: string;
   notes: string;
   /** The matching entry in the user's Outlook contacts, once saved there. */
