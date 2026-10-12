@@ -174,7 +174,7 @@ function viewTrips(): [string, string] {
 function stopRow(id: string, s: Stop, showTrip: boolean) {
   const t = store.get("trips", s.tripId);
   const c = (s.contacts || [])[0];
-  return '<button class="row' + (s.visitedOn ? " visited" : "") + '" data-act="openStop" data-id="' + id + '"><span class="grow"><div class="t">' + esc(s.name) + '</div><div class="s">' +
+  return '<button class="row" data-act="openStop" data-id="' + id + '"><span class="grow"><div class="t">' + esc(s.name) + '</div><div class="s">' +
     esc([s.city || s.address, c && c.name, showTrip && t ? t.state : ""].filter(Boolean).join(" · ")) +
     '</div></span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px"><span class="pill st-' + esc(s.status) + '">' + esc(STATUS_NAME[s.status] || "") +
     '</span>' + (s.visitedOn ? '<span class="due visited">Visited ' + esc(fmtDay(s.visitedOn)) + "</span>" : '<span class="due">Planned</span>') + "</span></button>";
