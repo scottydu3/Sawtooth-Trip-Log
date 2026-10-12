@@ -447,7 +447,14 @@ function contactsFromForm(v: Record<string, string>): Contact[] {
 function useLocation() {
   const msg = document.getElementById("geoMsg");
   if (msg) msg.textContent = "Finding you…";
-  navigator.geolocation.getCurrentPosition(async (pos) => {
+  const failed = (err: GeolocationPositionError) => {
+    if (!msg) return;
+    msg.textContent = err.code === err.PERMISSION_DENIED
+      ? "Location is blocked for this app. On iPhone: Settings > Privacy & Security > Location Services > Safari Websites > While Using the App, then try again."
+      : "Couldn't find your location right now. Move somewhere with better signal and tap again.";
+  };
+  // A precise GPS fix can be slow indoors; fall back to a quicker, rougher one before giving up.
+  const located = async (pos: GeolocationPosition) => {
     pendingGeo = { lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6) };
     if (msg) msg.textContent = "Location saved";
     try {
@@ -462,7 +469,11 @@ function useLocation() {
       if (city && !city.value) city.value = a.city || a.town || a.village || a.hamlet || "";
       if (msg) msg.textContent = "Address filled in. Check it before saving.";
     } catch { /* coordinates are still saved */ }
-  }, () => { if (msg) msg.textContent = "Couldn't get your location. Check location permission for this app."; }, { enableHighAccuracy: true, timeout: 15000 });
+  };
+  navigator.geolocation.getCurrentPosition(located, (err) => {
+    if (err.code === err.PERMISSION_DENIED) return failed(err);
+    navigator.geolocation.getCurrentPosition(located, failed, { enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 });
+  }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
 }
 
 function contactSheet(stopId: string, cid?: string) {
