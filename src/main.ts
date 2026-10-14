@@ -196,6 +196,12 @@ function viewTrip(id: string): [string, string] {
   return [hdr, html];
 }
 
+/** A phone number you can tap to call, with Call and Text buttons beside it. */
+function phoneLinks(phone: string): string {
+  const n = esc(phone.replace(/[^\d+]/g, ""));
+  return '<a class="tap" href="tel:' + n + '">' + esc(phone) + '</a> <a class="btn sm" href="tel:' + n + '">Call</a><a class="btn sm" href="sms:' + n + '">Text</a>';
+}
+
 function viewStop(id: string): [string, string] {
   const s = store.get("stops", id)!;
   const t = store.get("trips", s.tripId);
@@ -203,7 +209,7 @@ function viewStop(id: string): [string, string] {
   let html = '<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px"><span class="pill st-' + esc(s.status) + '">' + esc(STATUS_NAME[s.status] || "") + '</span><span class="due">' + (s.visitedOn ? "Visited " + esc(fmtDay(s.visitedOn)) : "Not visited yet") + '</span></div><dl class="kv">' +
     (s.kind ? "<dt>Type</dt><dd>" + esc(s.kind) + "</dd>" : "") +
     (s.address || s.city ? "<dt>Address</dt><dd>" + esc([s.address, s.city].filter(Boolean).join(", ")) + "</dd>" : "") +
-    (s.phone ? '<dt>Main</dt><dd><a href="tel:' + esc(s.phone.replace(/[^\d+]/g, "")) + '" style="color:inherit">' + esc(s.phone) + "</a></dd>" : "") +
+    (s.phone ? '<dt>Main</dt><dd class="phoneline">' + phoneLinks(s.phone) + "</dd>" : "") +
     (s.website ? "<dt>Web</dt><dd>" + esc(s.website) + "</dd>" : "") +
     '</dl><div class="actions">' + '<a class="btn sm" href="' + esc(mapsUrl(s)) + '" target="_blank" rel="noopener">Open in Maps</a>' +
     STATUSES.filter(([k]) => k !== s.status).slice(0, 3).map(([k, l]) => '<button class="btn sm" data-act="setStatus" data-id="' + id + '" data-v="' + k + '">Mark ' + esc(l.toLowerCase()) + "</button>").join("") + "</div></div>";
@@ -211,8 +217,8 @@ function viewStop(id: string): [string, string] {
   html += '<div class="section-h"><h2>Contacts</h2><button data-act="newContact" data-id="' + id + '">+ Add contact</button></div>';
   const cs = s.contacts || [];
   html += cs.length ? '<div class="list">' + cs.map((c) => '<div class="card contact"><div style="display:flex;justify-content:space-between;gap:8px"><div><div class="name">' + esc(c.name || "Unnamed") + "</div>" + (c.role ? '<div style="color:var(--muted);font-size:13px">' + esc(c.role) + "</div>" : "") + '</div><button class="btn sm" data-act="editContact" data-id="' + id + '" data-c="' + esc(c.id) + '">Edit</button></div>' +
-    (c.phone ? '<div class="line"><span class="plabel">Cell</span>' + esc(c.phone) + ' <a class="btn sm" href="tel:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Call</a><a class="btn sm" href="sms:' + esc(c.phone.replace(/[^\d+]/g, "")) + '">Text</a></div>' : "") +
-    (c.workPhone ? '<div class="line"><span class="plabel">Work</span>' + esc(c.workPhone) + ' <a class="btn sm" href="tel:' + esc(c.workPhone.replace(/[^\d+]/g, "")) + '">Call</a></div>' : "") +
+    (c.phone ? '<div class="line"><span class="plabel">Cell</span>' + phoneLinks(c.phone) + "</div>" : "") +
+    (c.workPhone ? '<div class="line"><span class="plabel">Work</span>' + phoneLinks(c.workPhone) + "</div>" : "") +
     (c.email ? '<div class="line">' + esc(c.email) + ' <a class="btn sm" href="mailto:' + esc(c.email) + '">Email</a><button class="btn sm" data-act="copy" data-v="' + esc(c.email) + '">Copy</button></div>' : "") +
     (c.notes ? '<div style="font-size:14px;color:var(--muted)">' + esc(c.notes) + "</div>" : "") +
     '<div class="line" style="font-family:var(--body)">' + '<button class="btn sm" data-act="saveVcard" data-id="' + id + '" data-c="' + esc(c.id) + '">Save to phone</button>' +

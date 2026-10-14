@@ -70,6 +70,8 @@ main{padding-block:16px}
 .contact{display:flex;flex-direction:column;gap:6px}
 .contact .name{font-weight:600}
 .contact .line{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font:400 14px/1.4 var(--mono);overflow-wrap:anywhere}
+.contact .line .tap,.phoneline .tap{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.phoneline{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .contact .plabel{font:600 11px/1 var(--body);text-transform:uppercase;letter-spacing:.04em;color:var(--muted);min-width:34px}
 .note{border-left:3px solid var(--flag);padding:2px 0 2px 12px}
 .note time{display:block;font:500 12px/1.4 var(--mono);color:var(--muted)}
