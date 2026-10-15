@@ -4,7 +4,7 @@ import { authConfigured, currentAccount, initAuth, reconnect, ReconnectNeeded, s
 import { Store } from "./store";
 import { CalendarSync } from "./calendar";
 import type { Contact, Data, Reminder, Status, Stop, Trip } from "./types";
-import { StopMap, CATEGORY, CATEGORY_COLOR, CATEGORY_LABEL, type Category } from "./map";
+import { StopMap, CATEGORY, CATEGORY_COLOR, CATEGORY_LABEL, CATEGORY_OUTLINE, type Category } from "./map";
 import { Geocoder, needsGeocode } from "./geocode";
 import { Photos } from "./photos";
 import { ContactSync, vcard } from "./contacts";
@@ -12,7 +12,7 @@ import { parseBulk } from "./bulk";
 
 const STATES: [string, string][] = [["AL","Alabama"],["AK","Alaska"],["AZ","Arizona"],["AR","Arkansas"],["CA","California"],["CO","Colorado"],["CT","Connecticut"],["DE","Delaware"],["FL","Florida"],["GA","Georgia"],["HI","Hawaii"],["ID","Idaho"],["IL","Illinois"],["IN","Indiana"],["IA","Iowa"],["KS","Kansas"],["KY","Kentucky"],["LA","Louisiana"],["ME","Maine"],["MD","Maryland"],["MA","Massachusetts"],["MI","Michigan"],["MN","Minnesota"],["MS","Mississippi"],["MO","Missouri"],["MT","Montana"],["NE","Nebraska"],["NV","Nevada"],["NH","New Hampshire"],["NJ","New Jersey"],["NM","New Mexico"],["NY","New York"],["NC","North Carolina"],["ND","North Dakota"],["OH","Ohio"],["OK","Oklahoma"],["OR","Oregon"],["PA","Pennsylvania"],["RI","Rhode Island"],["SC","South Carolina"],["SD","South Dakota"],["TN","Tennessee"],["TX","Texas"],["UT","Utah"],["VT","Vermont"],["VA","Virginia"],["WA","Washington"],["WV","West Virginia"],["WI","Wisconsin"],["WY","Wyoming"]];
 const STATE_NAME: Record<string, string> = Object.fromEntries(STATES);
-const STATUSES: [Status, string][] = [["new","New lead"],["follow","Follow up"],["quoted","Quoted"],["customer","Customer"],["nofit","Not a fit"],["competitor","Competitor"],["dealer","Dealer"]];
+const STATUSES: [Status, string][] = [["new","New lead"],["follow","Prospect/Stay In Touch"],["quoted","Quoted/Follow up"],["demo","Demo"],["customer","Customer"],["nofit","Not a fit"],["competitor","Competitor"],["dealer","Dealer"]];
 const STATUS_NAME: Record<string, string> = Object.fromEntries(STATUSES);
 
 type View = "trips" | "trip" | "stop" | "reminders" | "stops" | "settings" | "map";
@@ -296,14 +296,14 @@ function renderMap() {
   geocoder.fillMissing();
   const inState = mapStops();
   const shown = inState;
-  const counts: Record<Category, number> = { customer: 0, potential: 0, follow: 0, lead: 0, nofit: 0, competitor: 0, dealer: 0 };
+  const counts: Record<Category, number> = { customer: 0, potential: 0, follow: 0, lead: 0, nofit: 0, competitor: 0, dealer: 0, demo: 0 };
   inState.forEach(([, s]) => { if (s.lat != null) counts[CATEGORY[s.status]]++; });
   const missing = inState.filter(([, s]) => s.lat == null);
   const noAddr = missing.filter(([, s]) => !needsGeocode(s)).length;
   const notFound = missing.filter(([id, s]) => needsGeocode(s) && geocoder.failed(id, s)).length;
   const locating = missing.length - noAddr - notFound;
-  $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "dealer", "potential", "follow", "lead", "nofit", "competitor"] as Category[]).map((c) =>
-    '<span class="chip"><span class="dot" style="background:' + CATEGORY_COLOR[c] + '"></span>' + CATEGORY_LABEL[c] + " <b>" + counts[c] + "</b></span>").join("") +
+  $("#mapPanel").innerHTML = '<div class="maplegend">' + (["customer", "dealer", "demo", "potential", "follow", "lead", "nofit", "competitor"] as Category[]).map((c) =>
+    '<span class="chip"><span class="dot" style="background:' + CATEGORY_COLOR[c] + ";border-color:" + CATEGORY_OUTLINE(c) + '"></span>' + CATEGORY_LABEL[c] + " <b>" + counts[c] + "</b></span>").join("") +
     "</div>" +
     (locating ? '<div class="mapnote">Finding ' + locating + " address" + (locating > 1 ? "es" : "") + " on the map…</div>" : "") +
     (notFound ? '<div class="mapnote">' + notFound + " address" + (notFound > 1 ? "es" : "") + " couldn't be found. Check the address on " + (notFound > 1 ? "those stops" : "that stop") + ', or use "Use my location" when you\'re there.</div>' : "") +

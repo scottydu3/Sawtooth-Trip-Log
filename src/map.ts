@@ -2,7 +2,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Status, Stop } from "./types";
 
-export type Category = "customer" | "potential" | "follow" | "lead" | "nofit" | "competitor" | "dealer";
+export type Category = "customer" | "potential" | "follow" | "lead" | "nofit" | "competitor" | "dealer" | "demo";
 
 export const CATEGORY: Record<Status, Category> = {
   customer: "customer",
@@ -12,15 +12,17 @@ export const CATEGORY: Record<Status, Category> = {
   nofit: "nofit",
   competitor: "competitor",
   dealer: "dealer",
+  demo: "demo",
 };
 export const CATEGORY_LABEL: Record<Category, string> = {
   customer: "Customer",
-  potential: "Quoted",
-  follow: "Follow up",
+  potential: "Quoted/Follow up",
+  follow: "Prospect/Stay In Touch",
   lead: "New lead",
   nofit: "Not a fit",
   competitor: "Competitor",
   dealer: "Dealer",
+  demo: "Demo",
 };
 export const CATEGORY_COLOR: Record<Category, string> = {
   customer: "#23a455",
@@ -30,7 +32,10 @@ export const CATEGORY_COLOR: Record<Category, string> = {
   nofit: "#d8402f",
   competitor: "#111111",
   dealer: "#e8559a",
+  demo: "#ffffff",
 };
+/** Outline around a pin; white pins get a dark one so they show on the map. */
+export const CATEGORY_OUTLINE = (c: Category) => (c === "demo" ? "#111111" : "#ffffff");
 
 /** The full-screen map of every stop, one colored dot per stop. */
 export class StopMap {
@@ -88,13 +93,13 @@ export class StopMap {
     this.names = new Map(stops.map(([id, s]) => [id, s.name]));
     const pts: L.LatLngExpression[] = [];
     // Draw "not interested" first and customers last so the dots that matter most sit on top.
-    const order: Category[] = ["competitor", "nofit", "lead", "follow", "potential", "dealer", "customer"];
+    const order: Category[] = ["competitor", "nofit", "lead", "follow", "potential", "demo", "dealer", "customer"];
     const sorted = stops.slice().sort((a, b) => order.indexOf(CATEGORY[a[1].status]) - order.indexOf(CATEGORY[b[1].status]));
     for (const [id, s] of sorted) {
       if (s.lat == null || s.lng == null) continue;
       const cat = CATEGORY[s.status] || "potential";
       const m = L.circleMarker([s.lat, s.lng], {
-        radius: 9, color: "#ffffff", weight: 2, fillColor: CATEGORY_COLOR[cat], fillOpacity: 1,
+        radius: 9, color: CATEGORY_OUTLINE(cat), weight: 2, fillColor: CATEGORY_COLOR[cat], fillOpacity: 1,
       });
       m.bindPopup(popupHTML(id, s, label(s)), { closeButton: false, offset: [0, -4] });
       m.addTo(this.layer);
